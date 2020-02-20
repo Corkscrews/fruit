@@ -1,9 +1,9 @@
 //
 //  NSBezierPath+BezierPathQuartzUtilities.h
-//  Voltage
+//  Fruit
 //
 //  Created by Pedro Paulo de Amorim on 17/02/2020.
-//  Copyright © 2020 T-Pro. All rights reserved.
+//  Copyright © 2020 Pedro Paulo de Amorim. All rights reserved.
 //
 
 #import <Cocoa/Cocoa.h>
