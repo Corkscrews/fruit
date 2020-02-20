@@ -58,13 +58,6 @@
   [background lineToPoint:NSMakePoint(0, frame.size.height)];
   [background closePath];
 
-  foreground = [NSBezierPath bezierPath];
-  [foreground moveToPoint:NSMakePoint(0.0, 0.0)];
-  [foreground lineToPoint:NSMakePoint(frame.size.width, 0)];
-  [foreground lineToPoint:NSMakePoint(frame.size.width, frame.size.height)];
-  [foreground lineToPoint:NSMakePoint(0, frame.size.height)];
-  [foreground closePath];
-
   CGFloat middleYYY = frame.size.height/2;
   CGFloat widthD = fruit.bounds.size.width * scale;
   CGFloat finalX = middleX + widthD;
@@ -85,11 +78,6 @@
                          [NSColor colorWithSRGBRed:243.0/255.0 green:185.0/255.0 blue:75.0/255.0 alpha:1.0], //YELLOW
                          [NSColor colorWithSRGBRed:120.0/255.0 green:184.0/255.0 blue:86.0/255.0 alpha:1.0], //GREEN
                          [NSColor colorWithSRGBRed:67.0/255.0 green:156.0/255.0 blue:214.0/255.0 alpha:1.0], //BLUE
-//                         [NSColor colorWithSRGBRed:139.0/255.0 green:69.0/255.0 blue:147.0/255.0 alpha:1.0], //PURPLE
-//                         [NSColor colorWithSRGBRed:207.0/255.0 green:72.0/255.0 blue:69.0/255.0 alpha:1.0], //RED
-//                         [NSColor colorWithSRGBRed:231.0/255.0 green:135.0/255.0 blue:59.0/255.0 alpha:1.0], //ORANGE
-//                         [NSColor colorWithSRGBRed:243.0/255.0 green:185.0/255.0 blue:75.0/255.0 alpha:1.0], //YELLOW
-//                         [NSColor colorWithSRGBRed:120.0/255.0 green:184.0/255.0 blue:86.0/255.0 alpha:1.0], //GREEN
                          nil];
 
   visibleLinesCount = 6;
@@ -192,12 +180,14 @@ NSAffineTransform *ScaleTranslation(const CGFloat angle)
     maskLeafLayer.frame = self.frame;
     maskLeafLayer.path = quartzLeafPath;
     maskLeafLayer.allowsEdgeAntialiasing = YES;
+     CGPathRelease(quartzLeafPath);
 
     CGPathRef quartzFruitPath = [fruit quartzPath];
     CAShapeLayer *maskFruitLayer = [CAShapeLayer layer];
     maskFruitLayer.frame = self.frame;
     maskFruitLayer.path = quartzFruitPath;
     maskFruitLayer.allowsEdgeAntialiasing = YES;
+    CGPathRelease(quartzFruitPath);
 
     [maskFruitLayer addSublayer:maskLeafLayer];
     maskBackgroundLayer.mask = maskFruitLayer;
@@ -205,12 +195,6 @@ NSAffineTransform *ScaleTranslation(const CGFloat angle)
     [self add];
 
   }
-//
-//  CGPathRelease(quartzFruitPath);
-//  CGPathRelease(quartzLeafPath);
-//
-//  [[NSColor blackColor] set];
-//  [foreground fill];
 
 }
 
@@ -253,6 +237,7 @@ NSAffineTransform *ScaleTranslation(const CGFloat angle)
 {
   NSAffineTransform* sm = TransformTranslation(NSMakePoint(0, heightOfBars * visibleLinesCount));
   double delayInSeconds = 3.0 * visibleLinesCount;
+  dispatch_time_t popTime = dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delayInSeconds * NSEC_PER_SEC));
 
   for (int i = 0; i <= totalLines; i++)
   {
@@ -266,7 +251,7 @@ NSAffineTransform *ScaleTranslation(const CGFloat angle)
       [self foo];
 
       [self startA:maskLineLayer from:from to:to duration:delayInSeconds];
-      dispatch_time_t popTime = dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delayInSeconds * NSEC_PER_SEC));
+
       dispatch_after(popTime, dispatch_get_main_queue(), ^(void){
         [self add];
       });

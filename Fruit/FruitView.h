@@ -14,11 +14,9 @@
 @interface FruitView : ScreenSaverView
 {
   NSBezierPath *background;
-  NSBezierPath *foreground;
   NSBezierPath *fruit;
   NSBezierPath *leaf;
 
-  NSBezierPath *green;
   NSMutableArray<NSBezierPath *> *colorsPath;
   NSMutableArray<NSColor *> *colorsForPath;
 
