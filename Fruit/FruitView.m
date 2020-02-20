@@ -85,14 +85,19 @@
                          [NSColor colorWithSRGBRed:243.0/255.0 green:185.0/255.0 blue:75.0/255.0 alpha:1.0], //YELLOW
                          [NSColor colorWithSRGBRed:120.0/255.0 green:184.0/255.0 blue:86.0/255.0 alpha:1.0], //GREEN
                          [NSColor colorWithSRGBRed:67.0/255.0 green:156.0/255.0 blue:214.0/255.0 alpha:1.0], //BLUE
-                         [NSColor colorWithSRGBRed:139.0/255.0 green:69.0/255.0 blue:147.0/255.0 alpha:1.0], //PURPLE
-                         [NSColor colorWithSRGBRed:207.0/255.0 green:72.0/255.0 blue:69.0/255.0 alpha:1.0], //RED
-                         [NSColor colorWithSRGBRed:231.0/255.0 green:135.0/255.0 blue:59.0/255.0 alpha:1.0], //ORANGE
-                         [NSColor colorWithSRGBRed:243.0/255.0 green:185.0/255.0 blue:75.0/255.0 alpha:1.0], //YELLOW
-                         [NSColor colorWithSRGBRed:120.0/255.0 green:184.0/255.0 blue:86.0/255.0 alpha:1.0], //GREEN
+//                         [NSColor colorWithSRGBRed:139.0/255.0 green:69.0/255.0 blue:147.0/255.0 alpha:1.0], //PURPLE
+//                         [NSColor colorWithSRGBRed:207.0/255.0 green:72.0/255.0 blue:69.0/255.0 alpha:1.0], //RED
+//                         [NSColor colorWithSRGBRed:231.0/255.0 green:135.0/255.0 blue:59.0/255.0 alpha:1.0], //ORANGE
+//                         [NSColor colorWithSRGBRed:243.0/255.0 green:185.0/255.0 blue:75.0/255.0 alpha:1.0], //YELLOW
+//                         [NSColor colorWithSRGBRed:120.0/255.0 green:184.0/255.0 blue:86.0/255.0 alpha:1.0], //GREEN
                          nil];
 
-  totalLines = 11;
+  visibleLinesCount = 6;
+  totalLines = visibleLinesCount * 3;
+
+  lastY -= heightOfBars*6;
+
+  int offset = 0;
 
   for (int i = 0; i <= totalLines; i++)
   {
@@ -100,12 +105,16 @@
     NSBezierPath *path = [NSBezierPath bezierPath];
     [path moveToPoint:NSMakePoint(middleX, lastY)];
     [path lineToPoint:NSMakePoint(finalX, lastY)];
-    [path lineToPoint:NSMakePoint(finalX, lastY + heightOfBars)];
-    [path lineToPoint:NSMakePoint(middleX, lastY + heightOfBars)];
+    [path lineToPoint:NSMakePoint(finalX, lastY + heightOfBars + 1)];
+    [path lineToPoint:NSMakePoint(middleX, lastY + heightOfBars + 1)];
     [path closePath];
 
     [colorsPath addObject:path];
-    [colorsForPath addObject:colorArray[i]];
+    [colorsForPath addObject:colorArray[i - offset]];
+
+    if (i > 0 && i % 6 == 0) {
+      offset += 6;
+    }
 
     lastY += heightOfBars;
   }
@@ -205,14 +214,6 @@ NSAffineTransform *ScaleTranslation(const CGFloat angle)
 
 }
 
-- (NSColor *)random
-{
-  CGFloat hue = ( arc4random() % 256 / 256.0 );  //  0.0 to 1.0
-  CGFloat saturation = ( arc4random() % 128 / 256.0 ) + 0.5;  //  0.5 to 1.0, away from white
-  CGFloat brightness = ( arc4random() % 128 / 256.0 ) + 0.5;  //  0.5 to 1.0, away from black
-  return [NSColor colorWithHue:hue saturation:saturation brightness:brightness alpha:1];
-}
-
 - (void)animateOneFrame
 {
   return;
@@ -231,21 +232,14 @@ NSAffineTransform *ScaleTranslation(const CGFloat angle)
 - (void)startA:(CAShapeLayer *)layer
           from:(NSBezierPath *)from
             to:(NSBezierPath *)to
-         block:(nullable void (^)(void))block
+      duration:(double)duration
 {
 
-  if (block != NULL) {
-    [CATransaction begin];
-  }
-
   CABasicAnimation* a = [CABasicAnimation animationWithKeyPath:@"path"];
-  [a setDuration:3.0f];
+  [a setDuration:duration];
   [a setFromValue:(id)[from quartzPath]];
   [a setToValue:(id)[to quartzPath]];
 
-  if (block != NULL) {
-    [CATransaction setCompletionBlock:block];
-  }
 
   CGPathRef quartzBackgroundPath = [to quartzPath];
   layer.path = quartzBackgroundPath;
@@ -253,14 +247,12 @@ NSAffineTransform *ScaleTranslation(const CGFloat angle)
 
   [layer addAnimation:a forKey:@"path"];
 
-  if (block != NULL) {
-    [CATransaction commit];
-  }
 }
 
 - (void)add
 {
-  NSAffineTransform* sm = TransformTranslation(NSMakePoint(0, heightOfBars));
+  NSAffineTransform* sm = TransformTranslation(NSMakePoint(0, heightOfBars * visibleLinesCount));
+  double delayInSeconds = 3.0 * visibleLinesCount;
 
   for (int i = 0; i <= totalLines; i++)
   {
@@ -273,12 +265,7 @@ NSAffineTransform *ScaleTranslation(const CGFloat angle)
       [self reorder];
       [self foo];
 
-      [self startA:maskLineLayer from:from to:to block:NULL];
-//      [self startA:maskLineLayer from:from to:to block:^{
-//        [self add];
-//      }];
-
-      double delayInSeconds = 3.0;
+      [self startA:maskLineLayer from:from to:to duration:delayInSeconds];
       dispatch_time_t popTime = dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delayInSeconds * NSEC_PER_SEC));
       dispatch_after(popTime, dispatch_get_main_queue(), ^(void){
         [self add];
@@ -287,7 +274,7 @@ NSAffineTransform *ScaleTranslation(const CGFloat angle)
       return;
     }
 
-    [self startA:maskLineLayer from:from to:to block:NULL];
+    [self startA:maskLineLayer from:from to:to duration:delayInSeconds];
   }
 
 }
@@ -295,30 +282,30 @@ NSAffineTransform *ScaleTranslation(const CGFloat angle)
 - (void)reorder
 {
 
-  NSArray* origin = [colorsForPath copy];
-
-  colorsForPath[0] = origin[11];
-  colorsForPath[1] = origin[0];
-  colorsForPath[2] = origin[1];
-  colorsForPath[3] = origin[2];
-  colorsForPath[4] = origin[3];
-  colorsForPath[5] = origin[4];
-  colorsForPath[6] = origin[5];
-  colorsForPath[7] = origin[6];
-  colorsForPath[8] = origin[7];
-  colorsForPath[9] = origin[8];
-  colorsForPath[10] = origin[9];
-  colorsForPath[11] = origin[10];
+//  NSArray* origin = [colorsForPath copy];
+//
+//  colorsForPath[0] = origin[11];
+//  colorsForPath[1] = origin[0];
+//  colorsForPath[2] = origin[1];
+//  colorsForPath[3] = origin[2];
+//  colorsForPath[4] = origin[3];
+//  colorsForPath[5] = origin[4];
+//  colorsForPath[6] = origin[5];
+//  colorsForPath[7] = origin[6];
+//  colorsForPath[8] = origin[7];
+//  colorsForPath[9] = origin[8];
+//  colorsForPath[10] = origin[9];
+//  colorsForPath[11] = origin[10];
 
 }
 
 - (void)foo
 {
-  for (int i = 0; i <= totalLines; i++)
-  {
-    CAShapeLayer *maskLineLayer = lineLayers[i];
-    maskLineLayer.fillColor = [colorsForPath[i] CGColor];
-  }
+//  for (int i = 0; i <= totalLines; i++)
+//  {
+//    CAShapeLayer *maskLineLayer = lineLayers[i];
+//    maskLineLayer.fillColor = [colorsForPath[i] CGColor];
+//  }
 }
 
 @end

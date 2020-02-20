@@ -27,6 +27,7 @@
 
   NSMutableArray<CAShapeLayer *> *lineLayers;
 
+  int visibleLinesCount;
   int totalLines;
 }
 
