@@ -92,9 +92,7 @@
                          [NSColor colorWithSRGBRed:120.0/255.0 green:184.0/255.0 blue:86.0/255.0 alpha:1.0], //GREEN
                          nil];
 
-  int lines = 6;
-  int caps = 4;
-  totalLines = lines + caps;
+  totalLines = 11;
 
   for (int i = 0; i <= totalLines; i++)
   {
@@ -242,8 +240,6 @@ NSAffineTransform *ScaleTranslation(const CGFloat angle)
 
   CABasicAnimation* a = [CABasicAnimation animationWithKeyPath:@"path"];
   [a setDuration:3.0f];
-  a.removedOnCompletion = NO;
-  a.fillMode = kCAFillModeBoth;
   [a setFromValue:(id)[from quartzPath]];
   [a setToValue:(id)[to quartzPath]];
 
@@ -251,9 +247,9 @@ NSAffineTransform *ScaleTranslation(const CGFloat angle)
     [CATransaction setCompletionBlock:block];
   }
 
-//  CGPathRef quartzBackgroundPath = [to quartzPath];
-//  layer.path = quartzBackgroundPath;
-//  CGPathRelease(quartzBackgroundPath);
+  CGPathRef quartzBackgroundPath = [to quartzPath];
+  layer.path = quartzBackgroundPath;
+  CGPathRelease(quartzBackgroundPath);
 
   [layer addAnimation:a forKey:@"path"];
 
@@ -276,9 +272,18 @@ NSAffineTransform *ScaleTranslation(const CGFloat angle)
     if (i == totalLines) {
       [self reorder];
       [self foo];
-      [self startA:maskLineLayer from:from to:to block:^{
+
+      [self startA:maskLineLayer from:from to:to block:NULL];
+//      [self startA:maskLineLayer from:from to:to block:^{
+//        [self add];
+//      }];
+
+      double delayInSeconds = 3.0;
+      dispatch_time_t popTime = dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delayInSeconds * NSEC_PER_SEC));
+      dispatch_after(popTime, dispatch_get_main_queue(), ^(void){
         [self add];
-      }];
+      });
+
       return;
     }
 
@@ -292,27 +297,24 @@ NSAffineTransform *ScaleTranslation(const CGFloat angle)
 
   NSArray* origin = [colorsForPath copy];
 
-  for (int i = 0; i <= 6; i++)
-  {
-
-    if (i == 0) {
-      colorsForPath[0] = origin[6];
-    }
-
-    int end = i+1;
-    if (end <= totalLines) {
-      colorsForPath[end] = origin[i];
-    } else {
-      colorsForPath[6] = origin[5];
-    }
-
-  }
+  colorsForPath[0] = origin[11];
+  colorsForPath[1] = origin[0];
+  colorsForPath[2] = origin[1];
+  colorsForPath[3] = origin[2];
+  colorsForPath[4] = origin[3];
+  colorsForPath[5] = origin[4];
+  colorsForPath[6] = origin[5];
+  colorsForPath[7] = origin[6];
+  colorsForPath[8] = origin[7];
+  colorsForPath[9] = origin[8];
+  colorsForPath[10] = origin[9];
+  colorsForPath[11] = origin[10];
 
 }
 
 - (void)foo
 {
-  for (int i = 0; i <= 6; i++)
+  for (int i = 0; i <= totalLines; i++)
   {
     CAShapeLayer *maskLineLayer = lineLayers[i];
     maskLineLayer.fillColor = [colorsForPath[i] CGColor];
