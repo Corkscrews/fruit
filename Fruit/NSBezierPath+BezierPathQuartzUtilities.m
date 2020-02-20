@@ -7,9 +7,7 @@
 //
 
 #import "NSBezierPath+BezierPathQuartzUtilities.h"
-
 #import <AppKit/AppKit.h>
-
 
 @implementation NSBezierPath (BezierPathQuartzUtilities)
 // This method works only in OS X v10.2 and later.

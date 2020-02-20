@@ -44,7 +44,7 @@ class BuildLogo: NSObject {
 
     
 
-    return path.reversed
+    return path
 
   }
 
