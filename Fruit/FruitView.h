@@ -9,17 +9,24 @@
 #import <ScreenSaver/ScreenSaver.h>
 #import <AppKit/AppKit.h>
 #import <Cocoa/Cocoa.h>
+#import <QuartzCore/QuartzCore.h>
 
 @interface FruitView : ScreenSaverView
 {
   NSBezierPath *background;
-  NSBezierPath *foreground;
   NSBezierPath *fruit;
   NSBezierPath *leaf;
 
-  NSBezierPath *green;
   NSMutableArray<NSBezierPath *> *colorsPath;
   NSMutableArray<NSColor *> *colorsForPath;
+
+  CAShapeLayer *maskBackgroundLayer;
+  CGFloat heightOfBars;
+
+  NSMutableArray<CAShapeLayer *> *lineLayers;
+
+  int visibleLinesCount;
+  int totalLines;
 }
 
 @end
