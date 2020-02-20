@@ -241,56 +241,23 @@ NSAffineTransform *ScaleTranslation(const CGFloat angle)
 
   for (int i = 0; i <= totalLines; i++)
   {
+
     CAShapeLayer *maskLineLayer = lineLayers[i];
     NSBezierPath* from = colorsPath[i];
     NSBezierPath* to = [colorsPath[i] copy];
     [to transformUsingAffineTransform:sm];
 
     if (i == totalLines) {
-      [self reorder];
-      [self foo];
-
       [self startA:maskLineLayer from:from to:to duration:delayInSeconds];
-
       dispatch_after(popTime, dispatch_get_main_queue(), ^(void){
         [self add];
       });
-
       return;
     }
 
     [self startA:maskLineLayer from:from to:to duration:delayInSeconds];
   }
 
-}
-
-- (void)reorder
-{
-
-//  NSArray* origin = [colorsForPath copy];
-//
-//  colorsForPath[0] = origin[11];
-//  colorsForPath[1] = origin[0];
-//  colorsForPath[2] = origin[1];
-//  colorsForPath[3] = origin[2];
-//  colorsForPath[4] = origin[3];
-//  colorsForPath[5] = origin[4];
-//  colorsForPath[6] = origin[5];
-//  colorsForPath[7] = origin[6];
-//  colorsForPath[8] = origin[7];
-//  colorsForPath[9] = origin[8];
-//  colorsForPath[10] = origin[9];
-//  colorsForPath[11] = origin[10];
-
-}
-
-- (void)foo
-{
-//  for (int i = 0; i <= totalLines; i++)
-//  {
-//    CAShapeLayer *maskLineLayer = lineLayers[i];
-//    maskLineLayer.fillColor = [colorsForPath[i] CGColor];
-//  }
 }
 
 @end
