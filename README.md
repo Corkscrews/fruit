@@ -1,6 +1,6 @@
 # Fruit
 
-Screensaver of the vintage Apple logo made purely with `NSBezierPath` and masks in Objective-C.
+Screensaver of the vintage Apple logo made purely with `NSBezierPath` and masks in Objective-C. Now animated!
 
 <img src="./art/screenshot.png" width="600"/>
 

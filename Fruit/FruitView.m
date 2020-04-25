@@ -1,15 +1,14 @@
 //
-//  VoltageView.m
-//  Voltage
+//  FruitView.m
+//  Fruit
 //
 //  Created by Pedro Paulo de Amorim on 17/02/2020.
-//  Copyright © 2020 T-Pro. All rights reserved.
+//  Copyright © 2020 Pedro Paulo de Amorim. All rights reserved.
 //
 
 #import "FruitView.h"
 #import <Fruit-Swift.h>
 #import <CoreImage/CoreImage.h>
-#import <QuartzCore/QuartzCore.h>
 #import <NSBezierPath+BezierPathQuartzUtilities.h>
 
 @implementation FruitView
@@ -59,13 +58,6 @@
   [background lineToPoint:NSMakePoint(0, frame.size.height)];
   [background closePath];
 
-  foreground = [NSBezierPath bezierPath];
-  [foreground moveToPoint:NSMakePoint(0.0, 0.0)];
-  [foreground lineToPoint:NSMakePoint(frame.size.width, 0)];
-  [foreground lineToPoint:NSMakePoint(frame.size.width, frame.size.height)];
-  [foreground lineToPoint:NSMakePoint(0, frame.size.height)];
-  [foreground closePath];
-
   CGFloat middleYYY = frame.size.height/2;
   CGFloat widthD = fruit.bounds.size.width * scale;
   CGFloat finalX = middleX + widthD;
@@ -74,34 +66,43 @@
   colorsForPath = [NSMutableArray new];
 
   CGFloat lastY = middleYYY - fruit.bounds.size.height;
-  CGFloat heightOfBars = (fruit.bounds.size.height)/6;
+  heightOfBars = (fruit.bounds.size.height)/6;
 
-  lastY += heightOfBars + 18; //offset
-
-//  [NSColor colorWithSRGBRed:<#(CGFloat)#> green:<#(CGFloat)#> blue:<#(CGFloat)#> alpha:<#(CGFloat)#>]
+//  lastY += heightOfBars + 18; //offset
 
   NSArray *colorArray = [[NSArray alloc] initWithObjects:
-                         [NSColor colorWithSRGBRed:67.0/255.0 green:156.0/255.0 blue:214.0/255.0 alpha:1.0],
-                         [NSColor colorWithSRGBRed:139.0/255.0 green:69.0/255.0 blue:147.0/255.0 alpha:1.0],
-                         [NSColor colorWithSRGBRed:207.0/255.0 green:72.0/255.0 blue:69.0/255.0 alpha:1.0],
-                         [NSColor colorWithSRGBRed:231.0/255.0 green:135.0/255.0 blue:59.0/255.0 alpha:1.0],
-                         [NSColor colorWithSRGBRed:243.0/255.0 green:185.0/255.0 blue:75.0/255.0 alpha:1.0],
-                         [NSColor colorWithSRGBRed:120.0/255.0 green:184.0/255.0 blue:86.0/255.0 alpha:1.0],
+                         [NSColor colorWithSRGBRed:67.0/255.0 green:156.0/255.0 blue:214.0/255.0 alpha:1.0], //BLUE
+                         [NSColor colorWithSRGBRed:139.0/255.0 green:69.0/255.0 blue:147.0/255.0 alpha:1.0], //PURPLE
+                         [NSColor colorWithSRGBRed:207.0/255.0 green:72.0/255.0 blue:69.0/255.0 alpha:1.0], //RED
+                         [NSColor colorWithSRGBRed:231.0/255.0 green:135.0/255.0 blue:59.0/255.0 alpha:1.0], //ORANGE
+                         [NSColor colorWithSRGBRed:243.0/255.0 green:185.0/255.0 blue:75.0/255.0 alpha:1.0], //YELLOW
+                         [NSColor colorWithSRGBRed:120.0/255.0 green:184.0/255.0 blue:86.0/255.0 alpha:1.0], //GREEN
+                         [NSColor colorWithSRGBRed:67.0/255.0 green:156.0/255.0 blue:214.0/255.0 alpha:1.0], //BLUE
                          nil];
 
-  for (int i = 0; i <= 5; i++)
+  visibleLinesCount = 6;
+  totalLines = visibleLinesCount * 3;
+
+  lastY -= heightOfBars*6;
+
+  int offset = 0;
+
+  for (int i = 0; i <= totalLines; i++)
   {
 
     NSBezierPath *path = [NSBezierPath bezierPath];
     [path moveToPoint:NSMakePoint(middleX, lastY)];
     [path lineToPoint:NSMakePoint(finalX, lastY)];
-    [path lineToPoint:NSMakePoint(finalX, lastY + heightOfBars)];
-    [path lineToPoint:NSMakePoint(middleX, lastY + heightOfBars)];
+    [path lineToPoint:NSMakePoint(finalX, lastY + heightOfBars + 1)];
+    [path lineToPoint:NSMakePoint(middleX, lastY + heightOfBars + 1)];
     [path closePath];
 
     [colorsPath addObject:path];
+    [colorsForPath addObject:colorArray[i - offset]];
 
-    [colorsForPath addObject:colorArray[i]];
+    if (i > 0 && i % 6 == 0) {
+      offset += 6;
+    }
 
     lastY += heightOfBars;
   }
@@ -147,61 +148,58 @@ NSAffineTransform *ScaleTranslation(const CGFloat angle)
 {
   [super drawRect:rect];
 
-  CGPathRef quartzBackgroundPath = [background quartzPath];
-  CAShapeLayer *maskBackgroundLayer = [CAShapeLayer layer];
-  maskBackgroundLayer.fillColor = [colorsForPath[colorsForPath.count - 1] CGColor];
-  maskBackgroundLayer.frame = self.frame;
-  maskBackgroundLayer.path = quartzBackgroundPath;
-  CGPathRelease(quartzBackgroundPath);
+  if (maskBackgroundLayer == NULL) {
 
-  for (int i = 0; i <= 5; i++)
-  {
-    CGPathRef quartzgreenPath = [colorsPath[i] quartzPath];
-    CAShapeLayer *maskGreenLayer = [CAShapeLayer layer];
-    maskGreenLayer.fillColor = [colorsForPath[i] CGColor];
-    maskGreenLayer.frame = self.frame;
-    maskGreenLayer.path = quartzgreenPath;
-    CGPathRelease(quartzgreenPath);
+    CGPathRef quartzBackgroundPath = [background quartzPath];
+    maskBackgroundLayer = [CAShapeLayer layer];
+    maskBackgroundLayer.fillColor = [[NSColor blackColor] CGColor];
+    maskBackgroundLayer.frame = self.frame;
+    maskBackgroundLayer.path = quartzBackgroundPath;
+    CGPathRelease(quartzBackgroundPath);
 
-    [maskBackgroundLayer addSublayer:maskGreenLayer];
+    lineLayers = [NSMutableArray new];
+
+    for (int i = 0; i <= totalLines; i++)
+    {
+      NSBezierPath *path = colorsPath[i];
+      CGPathRef quartzLinePath = [path quartzPath];
+      CAShapeLayer *maskLineLayer = [CAShapeLayer layer];
+      maskLineLayer.fillColor = [colorsForPath[i] CGColor];
+      maskLineLayer.frame = self.frame;
+      maskLineLayer.path = quartzLinePath;
+      CGPathRelease(quartzLinePath);
+
+      [maskBackgroundLayer addSublayer:maskLineLayer];
+      [lineLayers addObject:maskLineLayer];
+    }
+
+    [self.layer addSublayer:maskBackgroundLayer];
+
+    CGPathRef quartzLeafPath = [leaf quartzPath];
+    CAShapeLayer *maskLeafLayer = [CAShapeLayer layer];
+    maskLeafLayer.frame = self.frame;
+    maskLeafLayer.path = quartzLeafPath;
+    maskLeafLayer.allowsEdgeAntialiasing = YES;
+     CGPathRelease(quartzLeafPath);
+
+    CGPathRef quartzFruitPath = [fruit quartzPath];
+    CAShapeLayer *maskFruitLayer = [CAShapeLayer layer];
+    maskFruitLayer.frame = self.frame;
+    maskFruitLayer.path = quartzFruitPath;
+    maskFruitLayer.allowsEdgeAntialiasing = YES;
+    CGPathRelease(quartzFruitPath);
+
+    [maskFruitLayer addSublayer:maskLeafLayer];
+    maskBackgroundLayer.mask = maskFruitLayer;
+
+    [self add];
+
   }
 
-  [self.layer addSublayer:maskBackgroundLayer];
-
-  CGPathRef quartzLeafPath = [leaf quartzPath];
-  CAShapeLayer *maskLeafLayer = [CAShapeLayer layer];
-  maskLeafLayer.frame = self.frame;
-  maskLeafLayer.path = quartzLeafPath;
-  maskLeafLayer.allowsEdgeAntialiasing = YES;
-
-  CGPathRef quartzFruitPath = [fruit quartzPath];
-  CAShapeLayer *maskFruitLayer = [CAShapeLayer layer];
-  maskFruitLayer.frame = self.frame;
-  maskFruitLayer.path = quartzFruitPath;
-  maskFruitLayer.allowsEdgeAntialiasing = YES;
-
-  [maskFruitLayer addSublayer:maskLeafLayer];
-  maskBackgroundLayer.mask = maskFruitLayer;
-
-  CGPathRelease(quartzFruitPath);
-  CGPathRelease(quartzLeafPath);
-
-  [[NSColor blackColor] set];
-  [foreground fill];
-
-}
-
-- (NSColor *)random
-{
-  CGFloat hue = ( arc4random() % 256 / 256.0 );  //  0.0 to 1.0
-  CGFloat saturation = ( arc4random() % 128 / 256.0 ) + 0.5;  //  0.5 to 1.0, away from white
-  CGFloat brightness = ( arc4random() % 128 / 256.0 ) + 0.5;  //  0.5 to 1.0, away from black
-  return [NSColor colorWithHue:hue saturation:saturation brightness:brightness alpha:1];
 }
 
 - (void)animateOneFrame
 {
-//  [self setNeedsDisplay:YES];
   return;
 }
 
@@ -213,6 +211,53 @@ NSAffineTransform *ScaleTranslation(const CGFloat angle)
 - (NSWindow*)configureSheet
 {
   return nil;
+}
+
+- (void)startA:(CAShapeLayer *)layer
+          from:(NSBezierPath *)from
+            to:(NSBezierPath *)to
+      duration:(double)duration
+{
+
+  CABasicAnimation* a = [CABasicAnimation animationWithKeyPath:@"path"];
+  [a setDuration:duration];
+  [a setFromValue:(id)[from quartzPath]];
+  [a setToValue:(id)[to quartzPath]];
+
+
+  CGPathRef quartzBackgroundPath = [to quartzPath];
+  layer.path = quartzBackgroundPath;
+  CGPathRelease(quartzBackgroundPath);
+
+  [layer addAnimation:a forKey:@"path"];
+
+}
+
+- (void)add
+{
+  NSAffineTransform* sm = TransformTranslation(NSMakePoint(0, heightOfBars * visibleLinesCount));
+  double delayInSeconds = 3.0 * visibleLinesCount;
+  dispatch_time_t popTime = dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delayInSeconds * NSEC_PER_SEC));
+
+  for (int i = 0; i <= totalLines; i++)
+  {
+
+    CAShapeLayer *maskLineLayer = lineLayers[i];
+    NSBezierPath* from = colorsPath[i];
+    NSBezierPath* to = [colorsPath[i] copy];
+    [to transformUsingAffineTransform:sm];
+
+    if (i == totalLines) {
+      [self startA:maskLineLayer from:from to:to duration:delayInSeconds];
+      dispatch_after(popTime, dispatch_get_main_queue(), ^(void){
+        [self add];
+      });
+      return;
+    }
+
+    [self startA:maskLineLayer from:from to:to duration:delayInSeconds];
+  }
+
 }
 
 @end
