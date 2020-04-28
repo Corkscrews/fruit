@@ -8,7 +8,13 @@ Screensaver of the vintage Apple logo made purely with `NSBezierPath` and masks 
 
 ### Manual
 
-To get the latest binary please click [here](https://github.com/ppamorim/fruit/releases/download/1.0/Fruit.saver.zip).
+1. [Click here to Download](https://github.com/ppamorim/fruit/releases/download/1.0/Fruit.saver.zip)
+2. Open **Fruit.saver** (double click)
+3. `"Fruit.saver" can't be opened because it is from an unidentified developer` will appear, press `OK`
+4. Open `Preferences`
+5. Select `Security & Privacy`
+6. Select `General`
+7. On the bottom side, select `Open Anyway`
 
 ### Why it's not available in `brew cask`?
 
