@@ -6,7 +6,7 @@ Screensaver of the vintage Apple logo made purely with `NSBezierPath` and masks 
 
 Available on OSX Mavericks and up. (Not tested but expected to work on MacOS Catalina)
 
-<img src="./art/screenshot.png" width="600"/>
+<img src="./art/screenshot.gif" width="600"/>
 
 ### Install
 
@@ -34,3 +34,5 @@ Since `brew cask` limits your projects that have at least 50 stars, I am unable 
 ## License
 
 Fruit is available under the MIT license. See the [LICENSE](https://github.com/ppamorim/fruit/blob/master/LICENSE) file for more information. Logo & original animations are Apple's property.
+
+ffmpeg -i input.mov -vf "fps=10,scale=720:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse" -loop 1 output.gif
