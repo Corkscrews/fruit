@@ -42,8 +42,6 @@ class BuildLogo: NSObject {
     path.curve(to: CGPoint(x: 110.89, y: 99.2), controlPoint1: CGPoint(x: 111.99, y: 96.42), controlPoint2: CGPoint(x: 111.46, y: 97.84))
     path.close()
 
-    
-
     return path
 
   }
