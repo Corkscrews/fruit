@@ -3,23 +3,10 @@ name: Tests
 on:
   pull_request:
   push:
-    # trying and staging branches are for BORS config
     branches:
-      - trying
-      - staging
       - master
 
 jobs:
-  integeration_tests:
-    name: integration-tests
-    runs-on: macos-latest
-    env:
-      DEVELOPER_DIR: /Applications/Xcode_12.4.app/Contents/Developer
-    steps:
-      - uses: actions/checkout@v2
-      - name: Run tests
-        run: swift test -v
-
   linter:
     name: linter-check
     runs-on: macos-latest
@@ -29,3 +16,13 @@ jobs:
       - uses: actions/checkout@v2
       - name: Run SwiftLint
         run: sh ./Scripts/swiftlint.sh
+
+  builder:
+    name: build
+    runs-on: macos-latest
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_12.4.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v2
+      - name: Build artifact
+        run: xcodebuild -scheme Fruit build

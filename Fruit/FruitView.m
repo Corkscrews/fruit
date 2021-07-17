@@ -71,14 +71,14 @@
 //  lastY += heightOfBars + 18; //offset
 
   NSArray *colorArray = [[NSArray alloc] initWithObjects:
-                         [NSColor colorWithSRGBRed:67.0/255.0 green:156.0/255.0 blue:214.0/255.0 alpha:1.0], //BLUE
-                         [NSColor colorWithSRGBRed:139.0/255.0 green:69.0/255.0 blue:147.0/255.0 alpha:1.0], //PURPLE
-                         [NSColor colorWithSRGBRed:207.0/255.0 green:72.0/255.0 blue:69.0/255.0 alpha:1.0], //RED
-                         [NSColor colorWithSRGBRed:231.0/255.0 green:135.0/255.0 blue:59.0/255.0 alpha:1.0], //ORANGE
-                         [NSColor colorWithSRGBRed:243.0/255.0 green:185.0/255.0 blue:75.0/255.0 alpha:1.0], //YELLOW
-                         [NSColor colorWithSRGBRed:120.0/255.0 green:184.0/255.0 blue:86.0/255.0 alpha:1.0], //GREEN
-                         [NSColor colorWithSRGBRed:67.0/255.0 green:156.0/255.0 blue:214.0/255.0 alpha:1.0], //BLUE
-                         nil];
+    [NSColor colorWithSRGBRed:67.0/255.0 green:156.0/255.0 blue:214.0/255.0 alpha:1.0], //BLUE
+    [NSColor colorWithSRGBRed:139.0/255.0 green:69.0/255.0 blue:147.0/255.0 alpha:1.0], //PURPLE
+    [NSColor colorWithSRGBRed:207.0/255.0 green:72.0/255.0 blue:69.0/255.0 alpha:1.0], //RED
+    [NSColor colorWithSRGBRed:231.0/255.0 green:135.0/255.0 blue:59.0/255.0 alpha:1.0], //ORANGE
+    [NSColor colorWithSRGBRed:243.0/255.0 green:185.0/255.0 blue:75.0/255.0 alpha:1.0], //YELLOW
+    [NSColor colorWithSRGBRed:120.0/255.0 green:184.0/255.0 blue:86.0/255.0 alpha:1.0], //GREEN
+    [NSColor colorWithSRGBRed:67.0/255.0 green:156.0/255.0 blue:214.0/255.0 alpha:1.0], //BLUE
+    nil];
 
   visibleLinesCount = 6;
   totalLines = visibleLinesCount * 3;
@@ -87,8 +87,7 @@
 
   int offset = 0;
 
-  for (int i = 0; i <= totalLines; i++)
-  {
+  for (int i = 0; i <= totalLines; i++) {
 
     NSBezierPath *path = [NSBezierPath bezierPath];
     [path moveToPoint:NSMakePoint(middleX, lastY)];
@@ -235,12 +234,13 @@ NSAffineTransform *ScaleTranslation(const CGFloat angle)
 
 - (void)add
 {
-  NSAffineTransform* sm = TransformTranslation(NSMakePoint(0, heightOfBars * visibleLinesCount));
+  NSAffineTransform* sm = TransformTranslation(
+    NSMakePoint(0, heightOfBars * visibleLinesCount));
   double delayInSeconds = 3.0 * visibleLinesCount;
-  dispatch_time_t popTime = dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delayInSeconds * NSEC_PER_SEC));
+  dispatch_time_t popTime = dispatch_time(
+    DISPATCH_TIME_NOW, (int64_t)(delayInSeconds * NSEC_PER_SEC));
 
-  for (int i = 0; i <= totalLines; i++)
-  {
+  for (int i = 0; i <= totalLines; i++) {
 
     CAShapeLayer *maskLineLayer = lineLayers[i];
     NSBezierPath* from = colorsPath[i];
