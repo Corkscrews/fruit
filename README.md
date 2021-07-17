@@ -1,5 +1,7 @@
 # Fruit
 
+<a href="https://github.com/ppamorim/fruit/actions"><img src="https://github.com/ppamorim/fruit/workflows/Tests/badge.svg" alt="Github Workflow Status"></a>
+
 Screensaver of the vintage Apple logo made purely with `NSBezierPath` and masks in Objective-C. Now animated!
 
 <img src="./art/screenshot.png" width="600"/>
