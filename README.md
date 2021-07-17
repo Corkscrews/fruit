@@ -10,7 +10,7 @@ Available on OSX Mavericks and up. (Not tested but expected to work on MacOS Cat
 
 ### Install
 
-1. [Click here to Download](https://github.com/ppamorim/fruit/releases/download/1.0/Fruit.saver.zip)
+1. [Click here to Download](https://github.com/ppamorim/fruit/releases/download/1.1/Fruit.saver.zip)
 2. Open **Fruit.saver** (double click).
 3. `"Fruit.saver" can't be opened because it is from an unidentified developer` will appear, press `OK`.
 4. Open `Preferences`.
