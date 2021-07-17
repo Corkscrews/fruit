@@ -18,7 +18,7 @@ Available on OSX Mavericks and up. (Not tested but expected to work on MacOS Cat
 6. Select `General`.
 7. On the bottom side, select `Open Anyway`.
 
-If this doesn't work, please do the manual described below:
+If this doesn't work, please do the manual described below.
 
 ### Install from the source code
 
