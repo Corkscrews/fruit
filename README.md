@@ -10,7 +10,7 @@ Available on OSX Mavericks and up. (Not tested but expected to work on MacOS Cat
 
 ### Install
 
-1. [Click here to Download](https://github.com/ppamorim/fruit/releases/download/1.0/Fruit.saver.zip)
+1. [Click here to Download](https://github.com/ppamorim/fruit/releases/download/1.1/Fruit.saver.zip)
 2. Open **Fruit.saver** (double click).
 3. `"Fruit.saver" can't be opened because it is from an unidentified developer` will appear, press `OK`.
 4. Open `Preferences`.
@@ -34,5 +34,3 @@ Since `brew cask` limits your projects that have at least 50 stars, I am unable 
 ## License
 
 Fruit is available under the MIT license. See the [LICENSE](https://github.com/ppamorim/fruit/blob/master/LICENSE) file for more information. Logo & original animations are Apple's property.
-
-ffmpeg -i input.mov -vf "fps=10,scale=720:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse" -loop 1 output.gif
