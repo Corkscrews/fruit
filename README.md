@@ -10,6 +10,10 @@ Compatible with macOS 11.5 and later.
 
 ### Install
 
+1. Run `brew install --cask --no-quarantine fruit-screensaver`
+
+### Install manually
+
 1. [Click here to Download](https://github.com/Corkscrews/fruit/releases/download/1.3.0/Fruit.saver.tar.gz)
 2. Open **Fruit.saver** (double click).
 3. `"Fruit.saver" can't be opened because it is from an unidentified developer` will appear, press `OK`.
