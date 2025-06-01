@@ -1,7 +1,7 @@
 import Cocoa
 import MetalKit
 
-public class MetalView: MTKView, MTKViewDelegate {
+public final class MetalView: MTKView, MTKViewDelegate {
   // MARK: - Public Properties
   public var onReady: (() -> Void)?
 

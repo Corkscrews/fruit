@@ -1,7 +1,7 @@
 import Cocoa
 import FruitFarm
 
-class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate {
   var window: NSWindow?
 
   func applicationDidFinishLaunching(_ aNotification: Notification) {

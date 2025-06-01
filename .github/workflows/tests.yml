@@ -43,7 +43,7 @@ jobs:
       - name: Zip .saver
         run: |
           cd build
-          zip -r FruitScreensaver.saver.zip FruitScreensaver.saver
+          tar -czf Fruit.saver.tar.gz Fruit.saver
 
       - name: Extract build number from xcodeproj
         id: extract_build_number
@@ -70,7 +70,7 @@ jobs:
       - name: Upload .saver to Release
         uses: softprops/action-gh-release@v2
         with:
-          files: build/FruitScreensaver.saver.zip
+          files: build/Fruit.saver.tar.gz
           tag_name: ${{ steps.extract_build_number.outputs.build_number }}
           name: "Release ${{ steps.extract_build_number.outputs.build_number }}"
           body: ${{ steps.extract_changelog.outputs.changelog }}
