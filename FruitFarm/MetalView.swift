@@ -4,7 +4,7 @@ import MetalKit
 public class MetalView: MTKView, MTKViewDelegate {
   // MARK: - Public Properties
   public var onReady: (() -> Void)?
-  
+
   // MARK: - Private Properties
   private let colorSpace = CGColorSpace(name: CGColorSpace.extendedLinearDisplayP3)
   private var contrast: Float // values from 1.0 to 3.0, where 1.0 is optimal
@@ -21,8 +21,8 @@ public class MetalView: MTKView, MTKViewDelegate {
   /// - contrast: value use by `CIColorControls` `CIFilter`
   /// - brightness: value use by `CIColorControls` `CIFilter`
   public init(
-    frame: CGRect, 
-    frameRate: Int? = nil, 
+    frame: CGRect,
+    frameRate: Int? = nil,
     contrast: Float = 1.0,
     brightness: Float = 1.0
   ) {
@@ -103,8 +103,8 @@ public class MetalView: MTKView, MTKViewDelegate {
     (text as NSString).draw(in: rect, withAttributes: attrs)
     textImage.unlockFocus()
     guard let cgImage = textImage.cgImage(
-      forProposedRect: nil, 
-      context: nil, 
+      forProposedRect: nil,
+      context: nil,
       hints: nil
     ) else { return nil }
     filter.setValue(CIImage(cgImage: cgImage), forKey: kCIInputImageKey)
@@ -112,12 +112,12 @@ public class MetalView: MTKView, MTKViewDelegate {
   }
 
   private func makeTransparentImage(filter: CIFilter) -> CIImage? {
-    guard let colorSpace = colorSpace, 
+    guard let colorSpace = colorSpace,
       let color = CIColor(
-        red: 1, 
-        green: 1, 
-        blue: 1, 
-        alpha: 1, 
+        red: 1,
+        green: 1,
+        blue: 1,
+        alpha: 1,
         colorSpace: colorSpace
       ) else { return nil }
     filter.setValue(CIImage(color: color), forKey: kCIInputImageKey)
@@ -126,21 +126,21 @@ public class MetalView: MTKView, MTKViewDelegate {
 
   // MARK: - MTKViewDelegate
   public func draw(in view: MTKView) {
-    guard let image = image, 
-      let colorSpace = colorSpace, 
-      let commandQueue = commandQueue, 
-      let renderContext = renderContext, 
-      let commandBuffer = commandQueue.makeCommandBuffer(), 
+    guard let image = image,
+      let colorSpace = colorSpace,
+      let commandQueue = commandQueue,
+      let renderContext = renderContext,
+      let commandBuffer = commandQueue.makeCommandBuffer(),
       let drawable = currentDrawable else { return }
     if !didBecomeReady {
       didBecomeReady = true
       onReady?()
     }
     renderContext.render(
-      image, 
-      to: drawable.texture, 
-      commandBuffer: commandBuffer, 
-      bounds: CGRect(origin: .zero, size: drawableSize), 
+      image,
+      to: drawable.texture,
+      commandBuffer: commandBuffer,
+      bounds: CGRect(origin: .zero, size: drawableSize),
       colorSpace: colorSpace
     )
     commandBuffer.present(drawable)
