@@ -18,7 +18,7 @@ class FruitScreensaver: ScreenSaverView {
   override init?(frame: NSRect, isPreview: Bool) {
     super.init(frame: frame, isPreview: isPreview)
     animationTimeInterval = Constant.secondPerFrame
-    setupFruitView()
+    setupFruitView(isPreview: isPreview)
     if !isPreview {
       setupMetalView()
       addScreenDidChangeNotification()
@@ -29,7 +29,7 @@ class FruitScreensaver: ScreenSaverView {
   required init?(coder decoder: NSCoder) {
     super.init(coder: decoder)
     animationTimeInterval = Constant.secondPerFrame
-    setupFruitView()
+    setupFruitView(isPreview: false)
     if !isPreview {
       setupMetalView()
       addScreenDidChangeNotification()
@@ -37,8 +37,8 @@ class FruitScreensaver: ScreenSaverView {
     addObserverWillStopNotification()
   }
 
-  private func setupFruitView() {
-    fruitView = FruitView(frame: self.bounds)
+  private func setupFruitView(isPreview: Bool) {
+    fruitView = FruitView(frame: self.bounds, isPreview: isPreview)
     fruitView.autoresizingMask = [.width, .height]
     self.addSubview(fruitView)
   }

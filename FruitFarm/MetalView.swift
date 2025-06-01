@@ -16,7 +16,7 @@ public class MetalView: MTKView, MTKViewDelegate {
 
   // MARK: - Init
   /// Public initializer
-  /// - frameRate: lower the frame rate for better perfomance, otherwise the screen frame 
+  /// - frameRate: lower the frame rate for better perfomance, otherwise the screen frame
   /// rate is used (probably 120)
   /// - contrast: value use by `CIColorControls` `CIFilter`
   /// - brightness: value use by `CIColorControls` `CIFilter`
@@ -71,7 +71,7 @@ public class MetalView: MTKView, MTKViewDelegate {
     let transparent = makeTransparentImage(filter: filter)
     if let preview = preview {
       image = preview
-      DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+      DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
         self?.image = transparent
       }
     } else {
@@ -88,7 +88,7 @@ public class MetalView: MTKView, MTKViewDelegate {
   }
 
   private func makePreviewImage(filter: CIFilter) -> CIImage? {
-    let text = "XDRWrapper"
+    let text = " "
     let size = bounds.size
     let textImage = NSImage(size: size)
     textImage.lockFocus()
@@ -113,13 +113,13 @@ public class MetalView: MTKView, MTKViewDelegate {
 
   private func makeTransparentImage(filter: CIFilter) -> CIImage? {
     guard let colorSpace = colorSpace,
-      let color = CIColor(
-        red: 1,
-        green: 1,
-        blue: 1,
-        alpha: 1,
-        colorSpace: colorSpace
-      ) else { return nil }
+          let color = CIColor(
+            red: 1,
+            green: 1,
+            blue: 1,
+            alpha: 1,
+            colorSpace: colorSpace
+          ) else { return nil }
     filter.setValue(CIImage(color: color), forKey: kCIInputImageKey)
     return filter.outputImage
   }
@@ -127,11 +127,11 @@ public class MetalView: MTKView, MTKViewDelegate {
   // MARK: - MTKViewDelegate
   public func draw(in view: MTKView) {
     guard let image = image,
-      let colorSpace = colorSpace,
-      let commandQueue = commandQueue,
-      let renderContext = renderContext,
-      let commandBuffer = commandQueue.makeCommandBuffer(),
-      let drawable = currentDrawable else { return }
+          let colorSpace = colorSpace,
+          let commandQueue = commandQueue,
+          let renderContext = renderContext,
+          let commandBuffer = commandQueue.makeCommandBuffer(),
+          let drawable = currentDrawable else { return }
     if !didBecomeReady {
       didBecomeReady = true
       onReady?()

@@ -52,7 +52,7 @@ final class FruitShopViewController: NSViewController {
       // Get the display's refresh rate (frames per second)
       // CVTimeStamp does not have a 'timeScale' property; use 'videoTimeScale' instead
       let timeScale = Int64(inNow.pointee.videoTimeScale)
-//      let timeValue = inNow.pointee.videoTime
+      //      let timeValue = inNow.pointee.videoTime
       let frameDuration = inNow.pointee.videoRefreshPeriod
       // Calculate FPS
       let fps: Int = frameDuration > 0 ? Int(timeScale / frameDuration) : 60
@@ -78,7 +78,7 @@ final class FruitShopViewController: NSViewController {
 
   @objc
   private func checkEDR() {
-    guard let screen = window?.screen else { return }
+    guard let screen = view.window?.screen else { return }
     let edrMax = screen.maximumPotentialExtendedDynamicRangeColorComponentValue
     metalView?.isHidden = edrMax == 1.0
   }

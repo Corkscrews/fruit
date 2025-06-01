@@ -9,5 +9,5 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     window?.title = "FruitShop"
     window?.makeKeyAndOrderFront(self)
   }
-
+  
 }

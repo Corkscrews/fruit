@@ -1,11 +1,15 @@
 import Cocoa
 import QuartzCore
+import Foundation
 
 // MARK: - FruitView
-/// FruitView is a custom NSView that draws and animates a stylized fruit logo with 
+/// FruitView is a custom NSView that draws and animates a stylized fruit logo with
 /// colored bars, similar to the vintage Apple logo.
 /// It uses Core Animation layers for efficient rendering and smooth animation.
 public class FruitView: NSView {
+
+  public let isPreview: Bool
+
   // MARK: - Core Paths and Layers
   /// The background shape for the entire view.
   private var background: NSBezierPath!
@@ -23,6 +27,8 @@ public class FruitView: NSView {
   private var colorsForPath: [NSColor] = []
   /// The main background layer that holds all bar layers.
   private var maskBackgroundLayer: CAShapeLayer?
+  /// The single layer that draws all colored bars.
+  private var barsLayer: BarsLayer?
   /// Height of each colored bar.
   private var heightOfBars: CGFloat = 0
   /// Store the current offset for each line in an array instead of using value/setValue
@@ -50,16 +56,23 @@ public class FruitView: NSView {
     NSColor(srgbRed: 231/255, green: 135/255, blue: 59/255, alpha: 1), // ORANGE
     NSColor(srgbRed: 243/255, green: 185/255, blue: 75/255, alpha: 1), // YELLOW
     NSColor(srgbRed: 120/255, green: 184/255, blue: 86/255, alpha: 1) // GREEN
-//    NSColor(srgbRed: 67/255, green: 156/255, blue: 214/255, alpha: 1)  // BLUE
+    //    NSColor(srgbRed: 67/255, green: 156/255, blue: 214/255, alpha: 1)  // BLUE
   ]
 
   /// Initializes the view and sets up the initial geometry and animation.
-  public override init(frame frameRect: NSRect) {
+  public init(frame frameRect: NSRect, isPreview: Bool = true) {
+    self.isPreview = isPreview
     super.init(frame: frameRect)
     updateFrame()
   }
 
+  @available(*, unavailable, message: "Use init(frame:isPreview:) instead")
+  public override convenience init(frame frameRect: NSRect) {
+    self.init(frame: frameRect, isPreview: false)
+  }
+
   required init?(coder: NSCoder) {
+    self.isPreview = false
     super.init(coder: coder)
     updateFrame()
   }
@@ -75,7 +88,20 @@ public class FruitView: NSView {
   /// Applies scaling, rotation, and translation to the fruit and leaf paths so they are
   /// centered and sized for the current view.
   private func setupFruitAndLeafTransforms() {
-    let scale: CGFloat = 2.0
+
+    let scale: CGFloat
+    if isPreview {
+      // Magic number for the preview, based on the zsmb13/KotlinLogo-ScreenSaver implementation
+      scale = ((self.frame.width / 1728) + (self.frame.height / 1117)) * 1.5
+    } else {
+      let finalWidth = originalFruit.bounds.size.width * 2.0
+      let finalHeight = originalFruit.bounds.size.height * 2.0
+      // Calculate the scale so that the fruit fits within the view bounds, scaling down if necessary
+      let widthScale = bounds.size.width / finalWidth
+      let heightScale = bounds.size.height / finalHeight
+      scale = min(2.0, widthScale, heightScale)
+    }
+
     let originX = originalFruit.bounds.size.width
     let originY = originalFruit.bounds.size.height
     // Center the fruit horizontally and vertically
@@ -84,7 +110,7 @@ public class FruitView: NSView {
 
     // Compose the transforms: rotate, scale, then translate
     let rotationTransform = TransformHelpers.rotationTransform(
-      .pi,
+      Double.pi,
       point: NSPoint(x: originX, y: originY)
     )
     let translationTransform = TransformHelpers.translationTransform(
@@ -138,16 +164,10 @@ public class FruitView: NSView {
     for index in 0...totalLines {
       // Each bar is a rectangle split into two triangles
       let path = NSBezierPath()
-      // First triangle
       path.move(to: NSPoint(x: originX, y: lastY))
       path.line(to: NSPoint(x: originX + width, y: lastY))
       path.line(to: NSPoint(x: originX + width, y: lastY + heightOfBars + 1))
-      path.close()
-      // Second triangle
-      path.move(to: NSPoint(x: originX, y: lastY))
-      path.line(to: NSPoint(x: originX + width, y: lastY + heightOfBars + 1))
       path.line(to: NSPoint(x: originX, y: lastY + heightOfBars + 1))
-      path.close()
       linePaths.append(path)
       // Assign color cycling through the palette
       colorsForPath.append(FruitView.colorArray[index % FruitView.colorArray.count])
@@ -156,7 +176,7 @@ public class FruitView: NSView {
   }
 
   // MARK: - Drawing
-  /// Draws the view. If the background layer is missing, sets up all layers 
+  /// Draws the view. If the background layer is missing, sets up all layers
   /// and animation.
   public override func draw(_ dirtyRect: NSRect) {
     super.draw(dirtyRect)
@@ -166,12 +186,23 @@ public class FruitView: NSView {
     }
   }
 
-  /// Sets up all Core Animation layers for the background, colored bars, and 
+  /// Sets up all Core Animation layers for the background, colored bars, and
   /// fruit/leaf mask.
   private func setupLayers() {
     guard let layer = self.layer else { return }
     maskBackgroundLayer = createBackgroundLayer() // Black background
-    lineLayers = createLineLayers()               // Colored bar layers
+    barsLayer = BarsLayer()
+    if let barsLayer = barsLayer {
+      barsLayer.frame = self.frame
+      barsLayer.contentsScale = NSScreen.main?.backingScaleFactor ?? 2.0
+      barsLayer.linePaths = linePaths
+      barsLayer.colorsForPath = colorsForPath
+      barsLayer.currentLineOffsets = currentLineOffsets
+      barsLayer.heightOfBars = heightOfBars
+      barsLayer.visibleLinesCount = visibleLinesCount
+      barsLayer.setNeedsDisplay()
+      maskBackgroundLayer?.addSublayer(barsLayer)
+    }
     if let maskBackgroundLayer = maskBackgroundLayer {
       // Mask with fruit+leaf
       maskBackgroundLayer.mask = createLeafAndFruitMask()
@@ -187,22 +218,6 @@ public class FruitView: NSView {
     bgLayer.allowsEdgeAntialiasing = true
     bgLayer.path = quartzBackgroundPath
     return bgLayer
-  }
-
-  /// Creates a CAShapeLayer for each colored bar and adds it to the background layer.
-  private func createLineLayers() -> [CAShapeLayer] {
-    var layers: [CAShapeLayer] = []
-    for index in 0...totalLines {
-      let path = linePaths[index]
-      let quartzLinePath = path.quartzPath
-      let maskLineLayer = CAShapeLayer()
-      maskLineLayer.fillColor = colorsForPath[index].cgColor
-      maskLineLayer.frame = self.frame
-      maskLineLayer.path = quartzLinePath
-      maskBackgroundLayer?.addSublayer(maskLineLayer)
-      layers.append(maskLineLayer)
-    }
-    return layers
   }
 
   /// Creates the mask layer for the fruit and leaf shapes.
@@ -221,6 +236,32 @@ public class FruitView: NSView {
     return maskFruitLayer
   }
 
+  /// Custom CALayer to draw all colored bars in one pass
+  private class BarsLayer: CALayer {
+    var linePaths: [NSBezierPath] = []
+    var colorsForPath: [NSColor] = []
+    var currentLineOffsets: [CGFloat] = []
+    var heightOfBars: CGFloat = 0
+    var visibleLinesCount: Int = 6
+
+    override func draw(in ctx: CGContext) {
+      guard !linePaths.isEmpty,
+            !colorsForPath.isEmpty,
+            !currentLineOffsets.isEmpty else {
+        return
+      }
+      for (index, path) in linePaths.enumerated() {
+        let offset = currentLineOffsets[index]
+        ctx.saveGState()
+        ctx.translateBy(x: 0, y: offset)
+        ctx.addPath(path.quartzPath)
+        ctx.setFillColor(colorsForPath[index].cgColor)
+        ctx.fillPath()
+        ctx.restoreGState()
+      }
+    }
+  }
+
   /// Last frame timestamp for time-based animation
   private var lastFrameTimestamp: TimeInterval?
   /// Speed of the bar animation in points per second
@@ -230,7 +271,12 @@ public class FruitView: NSView {
     let deltaTime = calculateDeltaTime(framesPerSecond: framesPerSecond)
     ensureCurrentOffsetsInitialized()
     for index in 0...totalLines {
-      updateLineLayer(at: index, deltaTime: deltaTime)
+      updateLineOffset(at: index, deltaTime: deltaTime)
+    }
+    // Update BarsLayer offsets and redraw
+    if let barsLayer = barsLayer {
+      barsLayer.currentLineOffsets = currentLineOffsets
+      barsLayer.setNeedsDisplay()
     }
   }
 
@@ -253,20 +299,12 @@ public class FruitView: NSView {
     }
   }
 
-  private func updateLineLayer(at index: Int, deltaTime: CGFloat) {
-    let maskLineLayer: CAShapeLayer = lineLayers[index]
-    let toPath = linePaths[index].copy() as! NSBezierPath
-
+  private func updateLineOffset(at index: Int, deltaTime: CGFloat) {
     let currentOffset = currentLineOffsets[index]
     let diff = barSpeed * deltaTime
     let newOffset = currentOffset + diff
-
     let maxOffset = heightOfBars * CGFloat(visibleLinesCount)
     let wrappedOffset = newOffset > maxOffset ? 0 : newOffset
-
-    let transform = AffineTransform(translationByX: 0, byY: wrappedOffset)
-    toPath.transform(using: transform)
-    maskLineLayer.path = toPath.quartzPath
     currentLineOffsets[index] = wrappedOffset
   }
 
