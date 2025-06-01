@@ -22,6 +22,7 @@ final class FruitShopViewController: NSViewController {
     view.addSubview(metalView)
 
     setupDisplayLink()
+    addOptionsButton()
   }
 
   override func viewDidLoad() {
@@ -81,6 +82,27 @@ final class FruitShopViewController: NSViewController {
     guard let screen = view.window?.screen else { return }
     let edrMax = screen.maximumPotentialExtendedDynamicRangeColorComponentValue
     metalView?.isHidden = edrMax == 1.0
+  }
+
+  // MARK: - Options Button
+
+  private func addOptionsButton() {
+    let optionsButton = NSButton(title: "Options", target: self, action: #selector(optionsButtonTapped))
+    optionsButton.bezelStyle = .rounded
+    optionsButton.translatesAutoresizingMaskIntoConstraints = false
+    self.view.addSubview(optionsButton)
+    NSLayoutConstraint.activate([
+      optionsButton.trailingAnchor.constraint(equalTo: self.view.trailingAnchor, constant: -20),
+      optionsButton.bottomAnchor.constraint(equalTo: self.view.bottomAnchor, constant: -20)
+    ])
+  }
+
+  @objc
+  private func optionsButtonTapped() {
+    let type = fruitView.fruitBackgroundType == BackgroundTypes.circularGradient
+      ? BackgroundTypes.rainbow
+      : BackgroundTypes.circularGradient
+    fruitView.update(type: type)
   }
 
 }
