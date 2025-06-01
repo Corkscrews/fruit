@@ -12,7 +12,7 @@ final class FruitShopViewController: NSViewController {
     self.view.frame = NSRect(x: 0, y: 0, width: 600, height: 400)
     self.view.wantsLayer = true // Ensure the view has a backing layer
     self.view.layer?.backgroundColor = NSColor.black.cgColor
-    
+
     fruitView = FruitView(frame: self.view.bounds)
     fruitView.autoresizingMask = [.width, .height]
     self.view.addSubview(fruitView)
@@ -78,10 +78,9 @@ final class FruitShopViewController: NSViewController {
 
   @objc
   private func checkEDR() {
-    if let screen = view.window?.screen {
-      let edrMax = screen.maximumPotentialExtendedDynamicRangeColorComponentValue
-      metalView.isHidden = edrMax == 1.0
-    }
+    guard let screen = window?.screen else { return }
+    let edrMax = screen.maximumPotentialExtendedDynamicRangeColorComponentValue
+    metalView?.isHidden = edrMax == 1.0
   }
 
 }

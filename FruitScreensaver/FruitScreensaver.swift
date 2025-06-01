@@ -117,10 +117,9 @@ class FruitScreensaver: ScreenSaverView {
 
   @objc
   private func checkEDR() {
-    if let screen = window?.screen {
-      let edrMax = screen.maximumPotentialExtendedDynamicRangeColorComponentValue
-      metalView?.isHidden = edrMax == 1.0
-    }
+    guard let screen = window?.screen else { return }
+    let edrMax = screen.maximumPotentialExtendedDynamicRangeColorComponentValue
+    metalView?.isHidden = edrMax == 1.0
   }
 
 }
