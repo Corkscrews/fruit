@@ -67,6 +67,7 @@
 			membershipExceptions = (
 				FruitScreensaver.swift,
 				Media.xcassets,
+				PreferencesViewController.swift,
 			);
 			target = 482BC7EC23FB14F200808C9E /* Fruit */;
 		};

@@ -9,6 +9,8 @@ final class FruitScreensaver: ScreenSaverView {
     static let secondPerFrame = 1.0 / 60.0
   }
 
+  private lazy var preferences = PreferencesViewController()
+
   private var fruitView: FruitView!
   private var metalView: MetalView?
 
