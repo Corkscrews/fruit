@@ -6,7 +6,7 @@ import Foundation
 /// FruitView is a custom NSView that draws and animates a stylized fruit logo with
 /// colored bars, similar to the vintage Apple logo.
 /// It uses Core Animation layers for efficient rendering and smooth animation.
-public class FruitView: NSView {
+public final class FruitView: NSView {
 
   public let isPreview: Bool
 

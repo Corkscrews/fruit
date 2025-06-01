@@ -1,7 +1,7 @@
 import Foundation
 import Cocoa
 
-public class BuildLogo {
+public final class BuildLogo {
 
   static func buildFruit() -> NSBezierPath {
     let path = NSBezierPath()

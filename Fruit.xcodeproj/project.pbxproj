@@ -56,7 +56,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
-		482BC7ED23FB14F200808C9E /* FruitScreensaver.saver */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = FruitScreensaver.saver; sourceTree = BUILT_PRODUCTS_DIR; };
+		482BC7ED23FB14F200808C9E /* Fruit.saver */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = Fruit.saver; sourceTree = BUILT_PRODUCTS_DIR; };
 		48D1EEB32DEBCBCC00712C23 /* FruitShop.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = FruitShop.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		48D1EED42DEBCF5600712C23 /* FruitFarm.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = FruitFarm.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -68,7 +68,7 @@
 				FruitScreensaver.swift,
 				Media.xcassets,
 			);
-			target = 482BC7EC23FB14F200808C9E /* FruitScreensaver */;
+			target = 482BC7EC23FB14F200808C9E /* Fruit */;
 		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
@@ -119,7 +119,7 @@
 		482BC7EE23FB14F200808C9E /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				482BC7ED23FB14F200808C9E /* FruitScreensaver.saver */,
+				482BC7ED23FB14F200808C9E /* Fruit.saver */,
 				48D1EEB32DEBCBCC00712C23 /* FruitShop.app */,
 				48D1EED42DEBCF5600712C23 /* FruitFarm.framework */,
 			);
@@ -153,9 +153,9 @@
 /* End PBXHeadersBuildPhase section */
 
 /* Begin PBXNativeTarget section */
-		482BC7EC23FB14F200808C9E /* FruitScreensaver */ = {
+		482BC7EC23FB14F200808C9E /* Fruit */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 482BC7F723FB14F200808C9E /* Build configuration list for PBXNativeTarget "FruitScreensaver" */;
+			buildConfigurationList = 482BC7F723FB14F200808C9E /* Build configuration list for PBXNativeTarget "Fruit" */;
 			buildPhases = (
 				482BC7E823FB14F200808C9E /* Headers */,
 				482BC7E923FB14F200808C9E /* Sources */,
@@ -168,9 +168,9 @@
 			dependencies = (
 				48D1EF062DEBDC9200712C23 /* PBXTargetDependency */,
 			);
-			name = FruitScreensaver;
+			name = Fruit;
 			productName = Voltage;
-			productReference = 482BC7ED23FB14F200808C9E /* FruitScreensaver.saver */;
+			productReference = 482BC7ED23FB14F200808C9E /* Fruit.saver */;
 			productType = "com.apple.product-type.bundle";
 		};
 		48D1EEB22DEBCBCC00712C23 /* FruitShop */ = {
@@ -255,7 +255,7 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				482BC7EC23FB14F200808C9E /* FruitScreensaver */,
+				482BC7EC23FB14F200808C9E /* Fruit */,
 				48D1EEB22DEBCBCC00712C23 /* FruitShop */,
 				48D1EED32DEBCF5600712C23 /* FruitFarm */,
 			);
@@ -442,7 +442,7 @@
 				COMBINE_HIDPI_IMAGES = YES;
 				DEVELOPMENT_TEAM = "";
 				INFOPLIST_FILE = FruitScreensaver/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = Fruit;
+				INFOPLIST_KEY_CFBundleDisplayName = "$(TARGET_NAME)";
 				INSTALL_PATH = "$(HOME)/Library/Screen Savers";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -450,7 +450,7 @@
 					"@loader_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 11.5;
-				MARKETING_VERSION = 1.3;
+				MARKETING_VERSION = 1.3.0;
 				PRODUCT_BUNDLE_IDENTIFIER = io.corkscrews.Fruit;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_OBJC_BRIDGING_HEADER = "";
@@ -469,7 +469,7 @@
 				COMBINE_HIDPI_IMAGES = YES;
 				DEVELOPMENT_TEAM = "";
 				INFOPLIST_FILE = FruitScreensaver/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = Fruit;
+				INFOPLIST_KEY_CFBundleDisplayName = "$(TARGET_NAME)";
 				INSTALL_PATH = "$(HOME)/Library/Screen Savers";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -477,7 +477,7 @@
 					"@loader_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 11.5;
-				MARKETING_VERSION = 1.3;
+				MARKETING_VERSION = 1.3.0;
 				PRODUCT_BUNDLE_IDENTIFIER = io.corkscrews.Fruit;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_OBJC_BRIDGING_HEADER = "";
@@ -513,7 +513,7 @@
 				);
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MACOSX_DEPLOYMENT_TARGET = 11.5;
-				MARKETING_VERSION = 1.3;
+				MARKETING_VERSION = 1.3.0;
 				PRODUCT_BUNDLE_IDENTIFIER = io.corkscrews.FruitShop;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -551,7 +551,7 @@
 				);
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MACOSX_DEPLOYMENT_TARGET = 11.5;
-				MARKETING_VERSION = 1.3;
+				MARKETING_VERSION = 1.3.0;
 				PRODUCT_BUNDLE_IDENTIFIER = io.corkscrews.FruitShop;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -660,7 +660,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		482BC7F723FB14F200808C9E /* Build configuration list for PBXNativeTarget "FruitScreensaver" */ = {
+		482BC7F723FB14F200808C9E /* Build configuration list for PBXNativeTarget "Fruit" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				482BC7F823FB14F200808C9E /* Debug */,

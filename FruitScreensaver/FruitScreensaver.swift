@@ -2,7 +2,7 @@ import ScreenSaver
 import FruitFarm
 
 // MARK: - FruitView
-class FruitScreensaver: ScreenSaverView {
+final class FruitScreensaver: ScreenSaverView {
 
   // MARK: Constant
   private enum Constant {
