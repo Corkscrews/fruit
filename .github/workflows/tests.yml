@@ -64,8 +64,8 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag ${{ steps.extract_build_number.outputs.build_number }}
-          git push origin ${{ steps.extract_build_number.outputs.build_number }}
+          git tag -f ${{ steps.extract_build_number.outputs.build_number }}
+          git push -f origin ${{ steps.extract_build_number.outputs.build_number }}
 
       - name: Upload .saver to Release
         uses: softprops/action-gh-release@v2
