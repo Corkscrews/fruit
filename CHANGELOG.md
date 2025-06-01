@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.3]
+
+### Minor Changes
+
+- Add thumbnail and correct the preview.
+- Improve performance.
+- Improved the GitHub Actions workflow for releases:
+  - Added a step to extract the changelog for the current build number and use it as the release body.
+  - Automated tagging and uploading of the `.saver` file to GitHub Releases.
+- Added a shell script to extract the changelog for a specific version from `CHANGELOG.md`.
+
 ## [1.2]
 
 ### Major Changes
