@@ -3,23 +3,36 @@ import FruitFarm
 
 final class FruitShopViewController: NSViewController {
   private var fruitView: FruitView!
+  private var metalView: MetalView!
+
   private var displayLink: CVDisplayLink?
 
   override func loadView() {
     self.view = NSView()
-    // Debug
-//    self.view.wantsLayer = true
-//    self.view.layer?.backgroundColor = NSColor.red.cgColor
     self.view.frame = NSRect(x: 0, y: 0, width: 600, height: 400)
+    self.view.wantsLayer = true // Ensure the view has a backing layer
+    self.view.layer?.backgroundColor = NSColor.black.cgColor
+    
     fruitView = FruitView(frame: self.view.bounds)
     fruitView.autoresizingMask = [.width, .height]
     self.view.addSubview(fruitView)
+
+    metalView = MetalView(frame: view.bounds, frameRate: 3, contrast: 1.0, brightness: 1.0)
+    metalView.autoresizingMask = [.width, .height]
+    view.addSubview(metalView)
+
     setupDisplayLink()
+  }
+
+  override func viewDidLoad() {
+    super.viewDidLoad()
+    addScreenDidChangeNotification()
   }
 
   override func viewDidLayout() {
     super.viewDidLayout()
     fruitView.frame = self.view.bounds
+    metalView.frame = self.view.bounds
   }
 
   deinit {
@@ -52,4 +65,23 @@ final class FruitShopViewController: NSViewController {
 
     CVDisplayLinkStart(displayLink)
   }
+
+  private func addScreenDidChangeNotification() {
+    checkEDR()
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(checkEDR),
+      name: NSWindow.didChangeScreenNotification,
+      object: view.window
+    )
+  }
+
+  @objc
+  private func checkEDR() {
+    if let screen = view.window?.screen {
+      let edrMax = screen.maximumPotentialExtendedDynamicRangeColorComponentValue
+      metalView.isHidden = edrMax == 1.0
+    }
+  }
+
 }

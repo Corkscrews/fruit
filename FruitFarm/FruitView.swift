@@ -183,8 +183,8 @@ public class FruitView: NSView {
   private func createBackgroundLayer() -> CAShapeLayer {
     let quartzBackgroundPath = background.quartzPath
     let bgLayer = CAShapeLayer()
-    bgLayer.fillColor = NSColor.black.cgColor
     bgLayer.frame = self.frame
+    bgLayer.allowsEdgeAntialiasing = true
     bgLayer.path = quartzBackgroundPath
     return bgLayer
   }

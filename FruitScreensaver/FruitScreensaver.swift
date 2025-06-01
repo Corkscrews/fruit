@@ -7,15 +7,10 @@ class FruitScreensaver: ScreenSaverView {
   // MARK: Constant
   private enum Constant {
     static let secondPerFrame = 1.0 / 60.0
-    static let backgroundColor = NSColor(
-      red: 0.00,
-      green: 0.01,
-      blue: 0.00,
-      alpha: 1.0
-    )
   }
 
   private var fruitView: FruitView!
+  private var metalView: MetalView?
 
   private var lastFrameTime: TimeInterval?
   private var lastFps: Int = 60
@@ -24,14 +19,22 @@ class FruitScreensaver: ScreenSaverView {
     super.init(frame: frame, isPreview: isPreview)
     animationTimeInterval = Constant.secondPerFrame
     setupFruitView()
-    addObserver()
+    if !isPreview {
+      setupMetalView()
+      addScreenDidChangeNotification()
+    }
+    addObserverWillStopNotification()
   }
 
   required init?(coder decoder: NSCoder) {
     super.init(coder: decoder)
     animationTimeInterval = Constant.secondPerFrame
     setupFruitView()
-    addObserver()
+    if !isPreview {
+      setupMetalView()
+      addScreenDidChangeNotification()
+    }
+    addObserverWillStopNotification()
   }
 
   private func setupFruitView() {
@@ -40,9 +43,31 @@ class FruitScreensaver: ScreenSaverView {
     self.addSubview(fruitView)
   }
 
+  private func setupMetalView() {
+    metalView = MetalView(
+      frame: self.bounds,
+      frameRate: 3,
+      contrast: 1.0,
+      brightness: 1.0
+    )
+    metalView!.alphaValue = 0.01
+    metalView!.autoresizingMask = [.width, .height]
+    metalView!.onReady = { [weak self] in
+      guard let self = self, let metalView = self.metalView else { return }
+      DispatchQueue.main.async {
+        NSAnimationContext.runAnimationGroup({ context in
+          context.duration = 1.0
+          metalView.animator().alphaValue = 1.0
+        }, completionHandler: nil)
+      }
+    }
+    self.addSubview(metalView!)
+  }
+
   override func layout() {
     super.layout()
     fruitView.frame = self.bounds
+    metalView?.frame = self.bounds
   }
 
   override func animateOneFrame() {
@@ -64,7 +89,7 @@ class FruitScreensaver: ScreenSaverView {
     return fps
   }
 
-  private func addObserver() {
+  private func addObserverWillStopNotification() {
     DistributedNotificationCenter.default.addObserver(
       self,
       selector: #selector(FruitScreensaver.willStop(_:)),
@@ -77,6 +102,24 @@ class FruitScreensaver: ScreenSaverView {
   private func willStop(_ aNotification: Notification) {
     if !isPreview {
       NSApplication.shared.terminate(nil)
+    }
+  }
+
+  private func addScreenDidChangeNotification() {
+    checkEDR()
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(checkEDR),
+      name: NSWindow.didChangeScreenNotification,
+      object: window
+    )
+  }
+
+  @objc
+  private func checkEDR() {
+    if let screen = window?.screen {
+      let edrMax = screen.maximumPotentialExtendedDynamicRangeColorComponentValue
+      metalView?.isHidden = edrMax == 1.0
     }
   }
 
