@@ -43,13 +43,13 @@ jobs:
       - name: Extract build number from xcodeproj
         id: extract_build_number
         run: |
-          BUILD_NUMBER=$(./scripts/extract_build_number.sh)
+          BUILD_NUMBER=$(./.github/scripts/extract_build_number.sh)
           echo "build_number=$BUILD_NUMBER" >> $GITHUB_OUTPUT
 
       - name: Extract changelog for build_number
         id: extract_changelog
         run: |
-          DESCRIPTION=$(awk "/## \\[${{ steps.extract_build_number.outputs.build_number }}\\]/ {flag=1; next} /^## \\[/ {flag=0} flag" CHANGELOG.md)
+          DESCRIPTION=$(./.github/scripts/extract_changelog.sh ${{ steps.extract_build_number.outputs.build_number }})
           echo "description=$DESCRIPTION" >> $GITHUB_OUTPUT
 
       - name: Upload .saver to Release
