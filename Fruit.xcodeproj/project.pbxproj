@@ -66,6 +66,7 @@
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				FruitScreensaver.swift,
+				Media.xcassets,
 			);
 			target = 482BC7EC23FB14F200808C9E /* FruitScreensaver */;
 		};
