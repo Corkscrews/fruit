@@ -49,8 +49,10 @@ jobs:
       - name: Extract changelog for build_number
         id: extract_changelog
         run: |
-          DESCRIPTION="$(./.github/scripts/extract_changelog.sh ${{ steps.extract_build_number.outputs.build_number }})"
+          DESCRIPTION=$(./.github/scripts/extract_changelog.sh ${{ steps.extract_build_number.outputs.build_number }})
+          echo 'var<<EOF' >> $GITHUB_OUTPUT
           echo "description=$DESCRIPTION" >> $GITHUB_OUTPUT
+          echo 'EOF' >> $GITHUB_OUTPUT
 
       - name: Upload .saver to Release
         uses: softprops/action-gh-release@v2
