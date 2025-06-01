@@ -25,6 +25,8 @@ public class FruitView: NSView {
   private var maskBackgroundLayer: CAShapeLayer?
   /// Height of each colored bar.
   private var heightOfBars: CGFloat = 0
+  /// Store the current offset for each line in an array instead of using value/setValue
+  private var currentLineOffsets: [CGFloat] = []
   /// CAShapeLayers for each colored bar.
   private var lineLayers: [CAShapeLayer] = []
   /// Number of visible colored bars.
@@ -74,29 +76,34 @@ public class FruitView: NSView {
   /// centered and sized for the current view.
   private func setupFruitAndLeafTransforms() {
     let scale: CGFloat = 2.0
-    let x = originalFruit.bounds.size.width
-    let y = originalFruit.bounds.size.height
+    let originX = originalFruit.bounds.size.width
+    let originY = originalFruit.bounds.size.height
     // Center the fruit horizontally and vertically
-    let middleX = bounds.size.width / 2 - x * scale
-    let middleY = bounds.size.height / 2 - y * scale
+    let middleX = bounds.size.width / 2 - originX * scale
+    let middleY = bounds.size.height / 2 - originY * scale
 
     // Compose the transforms: rotate, scale, then translate
-    let xfm = TransformHelpers.rotationTransform(.pi, cp: NSPoint(x: x, y: y))
-    let xm = TransformHelpers.translationTransform(NSPoint(x: middleX, y: middleY))
-    let sm = TransformHelpers.scaleTransform(scale)
+    let rotationTransform = TransformHelpers.rotationTransform(
+      .pi,
+      point: NSPoint(x: originX, y: originY)
+    )
+    let translationTransform = TransformHelpers.translationTransform(
+      NSPoint(x: middleX, y: middleY)
+    )
+    let scaleTransform = TransformHelpers.scaleTransform(scale)
 
     // Apply transforms to a copy of the original fruit path
     let copyFruit = originalFruit.copy() as! NSBezierPath
-    copyFruit.transform(using: xfm as AffineTransform)
-    copyFruit.transform(using: sm as AffineTransform)
-    copyFruit.transform(using: xm as AffineTransform)
+    copyFruit.transform(using: rotationTransform as AffineTransform)
+    copyFruit.transform(using: scaleTransform as AffineTransform)
+    copyFruit.transform(using: translationTransform as AffineTransform)
     fruit = copyFruit
 
     // Apply transforms to a copy of the original leaf path
     let copyLeaf = originalLeaf.copy() as! NSBezierPath
-    copyLeaf.transform(using: xfm as AffineTransform)
-    copyLeaf.transform(using: sm as AffineTransform)
-    copyLeaf.transform(using: xm as AffineTransform)
+    copyLeaf.transform(using: rotationTransform as AffineTransform)
+    copyLeaf.transform(using: scaleTransform as AffineTransform)
+    copyLeaf.transform(using: translationTransform as AffineTransform)
     leaf = copyLeaf
   }
 
@@ -115,34 +122,35 @@ public class FruitView: NSView {
   private func setupColorPathsAndColors() {
     let middleY = bounds.size.height / 2
     let width = bounds.size.width
-    let x = 0.0
-    let y = fruit.bounds.size.height
+    let originX = 0.0
+    let originY = fruit.bounds.size.height
 
     heightOfBars = fruit.bounds.size.height / CGFloat(kBarCountPerCycle)
     visibleLinesCount = kVisibleLinesCount
     totalLines = visibleLinesCount * kTotalLinesMultiplier
-    var lastY = middleY - y
+
+    var lastY = middleY - originY
     lastY -= heightOfBars * CGFloat(kBarCountPerCycle)
 
     linePaths = []
     colorsForPath = []
 
-    for i in 0...totalLines {
+    for index in 0...totalLines {
       // Each bar is a rectangle split into two triangles
       let path = NSBezierPath()
       // First triangle
-      path.move(to: NSPoint(x: x, y: lastY))
-      path.line(to: NSPoint(x: x + width, y: lastY))
-      path.line(to: NSPoint(x: x + width, y: lastY + heightOfBars + 1))
+      path.move(to: NSPoint(x: originX, y: lastY))
+      path.line(to: NSPoint(x: originX + width, y: lastY))
+      path.line(to: NSPoint(x: originX + width, y: lastY + heightOfBars + 1))
       path.close()
       // Second triangle
-      path.move(to: NSPoint(x: x, y: lastY))
-      path.line(to: NSPoint(x: x + width, y: lastY + heightOfBars + 1))
-      path.line(to: NSPoint(x: x, y: lastY + heightOfBars + 1))
+      path.move(to: NSPoint(x: originX, y: lastY))
+      path.line(to: NSPoint(x: originX + width, y: lastY + heightOfBars + 1))
+      path.line(to: NSPoint(x: originX, y: lastY + heightOfBars + 1))
       path.close()
       linePaths.append(path)
       // Assign color cycling through the palette
-      colorsForPath.append(FruitView.colorArray[i % FruitView.colorArray.count])
+      colorsForPath.append(FruitView.colorArray[index % FruitView.colorArray.count])
       lastY += heightOfBars
     }
   }
@@ -184,11 +192,11 @@ public class FruitView: NSView {
   /// Creates a CAShapeLayer for each colored bar and adds it to the background layer.
   private func createLineLayers() -> [CAShapeLayer] {
     var layers: [CAShapeLayer] = []
-    for i in 0...totalLines {
-      let path = linePaths[i]
+    for index in 0...totalLines {
+      let path = linePaths[index]
       let quartzLinePath = path.quartzPath
       let maskLineLayer = CAShapeLayer()
-      maskLineLayer.fillColor = colorsForPath[i].cgColor
+      maskLineLayer.fillColor = colorsForPath[index].cgColor
       maskLineLayer.frame = self.frame
       maskLineLayer.path = quartzLinePath
       maskBackgroundLayer?.addSublayer(maskLineLayer)
@@ -213,9 +221,6 @@ public class FruitView: NSView {
     return maskFruitLayer
   }
 
-  // Store the current offset for each line in an array instead of using value/setValue
-  private var currentOffsets: [CGFloat] = []
-
   /// Last frame timestamp for time-based animation
   private var lastFrameTimestamp: TimeInterval?
   /// Speed of the bar animation in points per second
@@ -224,27 +229,27 @@ public class FruitView: NSView {
   public func animateOneFrame(framesPerSecond: Int) {
     let deltaTime = calculateDeltaTime(framesPerSecond: framesPerSecond)
     ensureCurrentOffsetsInitialized()
-    for i in 0...totalLines {
-      updateLineLayer(at: i, deltaTime: deltaTime)
+    for index in 0...totalLines {
+      updateLineLayer(at: index, deltaTime: deltaTime)
     }
   }
 
   private func calculateDeltaTime(framesPerSecond: Int) -> CGFloat {
     let now = CACurrentMediaTime()
-    var dt: CGFloat = 1.0 / CGFloat(framesPerSecond)
+    var deltaTime: CGFloat = 1.0 / CGFloat(framesPerSecond)
     if let last = lastFrameTimestamp {
-      let realDt = CGFloat(now - last)
-      if realDt > 0 && realDt < 1.0 {
-        dt = realDt
+      let realDeltaTime = CGFloat(now - last)
+      if realDeltaTime > 0 && realDeltaTime < 1.0 {
+        deltaTime = realDeltaTime
       }
     }
     lastFrameTimestamp = now
-    return dt
+    return deltaTime
   }
 
   private func ensureCurrentOffsetsInitialized() {
-    if currentOffsets.count != totalLines + 1 {
-      currentOffsets = Array(repeating: 0, count: totalLines + 1)
+    if currentLineOffsets.count != totalLines + 1 {
+      currentLineOffsets = Array(repeating: 0, count: totalLines + 1)
     }
   }
 
@@ -252,7 +257,7 @@ public class FruitView: NSView {
     let maskLineLayer: CAShapeLayer = lineLayers[index]
     let toPath = linePaths[index].copy() as! NSBezierPath
 
-    let currentOffset = currentOffsets[index]
+    let currentOffset = currentLineOffsets[index]
     let diff = barSpeed * deltaTime
     let newOffset = currentOffset + diff
 
@@ -262,7 +267,7 @@ public class FruitView: NSView {
     let transform = AffineTransform(translationByX: 0, byY: wrappedOffset)
     toPath.transform(using: transform)
     maskLineLayer.path = toPath.quartzPath
-    currentOffsets[index] = wrappedOffset
+    currentLineOffsets[index] = wrappedOffset
   }
 
   // MARK: - Resizing

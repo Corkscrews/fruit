@@ -2,16 +2,21 @@ import Cocoa
 
 extension NSBezierPath {
   var quartzPath: CGPath {
-    if #available(macOS 14.0, *) {
-      return self.cgPath
-    }
+     if #available(macOS 14.0, *) {
+       return self.cgPath
+     }
+    // Improved performance: avoid unnecessary array allocations and .copy(), and preallocate points buffer.
     let path = CGMutablePath()
     var didClosePath = true
-    for i in 0..<self.elementCount {
-      var points = [NSPoint](repeating: .zero, count: 3)
-      switch self.element(at: i, associatedPoints: &points) {
+    // Preallocate a single buffer for points, reused for each element
+    let points = UnsafeMutablePointer<NSPoint>.allocate(capacity: 3)
+    defer { points.deallocate() }
+    for index in 0..<self.elementCount {
+      let elementType = self.element(at: index, associatedPoints: points)
+      switch elementType {
       case .moveTo:
         path.move(to: points[0])
+        didClosePath = false
       case .lineTo:
         path.addLine(to: points[0])
         didClosePath = false
@@ -28,6 +33,6 @@ extension NSBezierPath {
     if !didClosePath {
       path.closeSubpath()
     }
-    return path.copy()!
+    return path
   }
 }
