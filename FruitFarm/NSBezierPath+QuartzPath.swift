@@ -2,6 +2,9 @@ import Cocoa
 
 extension NSBezierPath {
   var quartzPath: CGPath {
+    if #available(macOS 14.0, *) {
+      return self.cgPath
+    }
     let path = CGMutablePath()
     var didClosePath = true
     for i in 0..<self.elementCount {
@@ -27,4 +30,4 @@ extension NSBezierPath {
     }
     return path.copy()!
   }
-} 
+}

@@ -9,7 +9,14 @@ public class FruitAnimator {
   private var totalLines: Int
   private var onLoop: (() -> Void)?
 
-  public init(lineLayers: [CAShapeLayer], colorsPath: [NSBezierPath], visibleLinesCount: Int, heightOfBars: CGFloat, totalLines: Int, onLoop: (() -> Void)? = nil) {
+  public init(
+    lineLayers: [CAShapeLayer], 
+    colorsPath: [NSBezierPath], 
+    visibleLinesCount: Int, 
+    heightOfBars: CGFloat, 
+    totalLines: Int, 
+    onLoop: (() -> Void)? = nil
+  ) {
     self.lineLayers = lineLayers
     self.colorsPath = colorsPath
     self.visibleLinesCount = visibleLinesCount
@@ -18,17 +25,24 @@ public class FruitAnimator {
     self.onLoop = onLoop
   }
 
-  public func startA(_ layer: CAShapeLayer, from: NSBezierPath, to: NSBezierPath, duration: Double) {
-    let a = CABasicAnimation(keyPath: "path")
-    a.duration = duration
-    a.fromValue = from.quartzPath
-    a.toValue = to.quartzPath
+  public func startA(
+    _ layer: CAShapeLayer, 
+    from: NSBezierPath, 
+    to: NSBezierPath, 
+    duration: Double
+  ) {
+    let animation = CABasicAnimation(keyPath: "path")
+    animation.duration = duration
+    animation.fromValue = from.quartzPath
+    animation.toValue = to.quartzPath
     layer.path = to.quartzPath
-    layer.add(a, forKey: "path")
+    layer.add(animation, forKey: "path")
   }
 
   public func add() {
-    let sm = TransformHelpers.translationTransform(NSPoint(x: 0, y: heightOfBars * CGFloat(visibleLinesCount)))
+    let sm = TransformHelpers.translationTransform(
+      NSPoint(x: 0, y: heightOfBars * CGFloat(visibleLinesCount))
+    )
     let delayInSeconds = 3.0 * Double(visibleLinesCount)
     let popTime = DispatchTime.now() + delayInSeconds
     for i in 0...totalLines {
