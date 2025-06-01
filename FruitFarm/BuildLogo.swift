@@ -1,20 +1,9 @@
-//
-//  BuildLogo.swift
-//  Fruit
-//
-//  Created by Pedro Paulo de Amorim on 17/02/2020.
-//  Copyright © 2020 Pedro Paulo de Amorim. All rights reserved.
-//
-
 import Foundation
 import Cocoa
 
-@objc
-class BuildLogo: NSObject {
+public class BuildLogo {
 
-  @objc
   static func buildFruit() -> NSBezierPath {
-
     let path = NSBezierPath()
     path.move(to: CGPoint(x: 110.89, y: 99.2))
     path.curve(to: CGPoint(x: 105.97, y: 108.09), controlPoint1: CGPoint(x: 109.5, y: 102.41), controlPoint2: CGPoint(x: 107.87, y: 105.37))
@@ -41,14 +30,11 @@ class BuildLogo: NSObject {
     path.curve(to: CGPoint(x: 112.5, y: 94.94), controlPoint1: CGPoint(x: 108.05, y: 92.56), controlPoint2: CGPoint(x: 110.16, y: 93.95))
     path.curve(to: CGPoint(x: 110.89, y: 99.2), controlPoint1: CGPoint(x: 111.99, y: 96.42), controlPoint2: CGPoint(x: 111.46, y: 97.84))
     path.close()
-
     return path
 
   }
 
-  @objc
   static func buildLeaf() -> NSBezierPath {
-
     let path = NSBezierPath()
     path.move(to: CGPoint(x: 93.25, y: 29.36))
     path.curve(to: CGPoint(x: 88.25, y: 42.23), controlPoint1: CGPoint(x: 93.25, y: 33.96), controlPoint2: CGPoint(x: 91.58, y: 38.26))
@@ -60,7 +46,6 @@ class BuildLogo: NSObject {
     path.curve(to: CGPoint(x: 93.25, y: 29.36), controlPoint1: CGPoint(x: 93.22, y: 28.14), controlPoint2: CGPoint(x: 93.25, y: 28.75))
     path.line(to: CGPoint(x: 93.25, y: 29.36))
     path.close()
-
     return path
   }
 

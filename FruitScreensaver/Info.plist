@@ -11,16 +11,16 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>$(PRODUCT_NAME)</string>
+	<string>Fruit</string>
 	<key>CFBundlePackageType</key>
-	<string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
+	<string>BNDL</string>
 	<key>CFBundleShortVersionString</key>
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
 	<string>1</string>
 	<key>NSHumanReadableCopyright</key>
-	<string>Copyright © 2020 Pedro Paulo de Amorim. All rights reserved.</string>
+	<string>Copyright © 2025 Corkscrews. All rights reserved.</string>
 	<key>NSPrincipalClass</key>
-	<string>FruitView</string>
+	<string>Fruit.FruitScreensaver</string>
 </dict>
 </plist>
