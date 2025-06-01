@@ -11,3 +11,4 @@
 - Animation is now stable and time-based, independent of frame rate.
 - Improved code documentation and readability throughout.
 - Exposed a single public `animateOneFrame(framesPerSecond:)` API for external animation control.
+- Add support to EDR.
