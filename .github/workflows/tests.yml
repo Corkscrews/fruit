@@ -25,6 +25,7 @@ jobs:
     name: Build and Release .saver
     runs-on: macos-14
     needs: linter
+    if: github.event_name == 'push'
     steps:
       - uses: actions/checkout@v4
         with:
