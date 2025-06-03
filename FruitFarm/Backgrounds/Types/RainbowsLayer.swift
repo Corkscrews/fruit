@@ -3,7 +3,7 @@ import QuartzCore
 import Foundation
 
 /// Custom CALayer to draw all colored bars in one pass
-final class RainbowBarsLayer: CALayer, Background {
+final class RainbowsLayer: CALayer, Background {
   // MARK: - Constants
   private static let colorArray: [NSColor] = [
     NSColor(srgbRed: 67/255, green: 156/255, blue: 214/255, alpha: 1), // BLUE

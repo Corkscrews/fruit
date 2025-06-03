@@ -44,4 +44,10 @@ final public class Fruit {
     path.transform(using: transform.translation as AffineTransform)
     self.transformedPath = path
   }
+
+  func maxDimen() -> CGFloat {
+    let fruitPathBounds = self.transformedPath.bounds
+    return max(fruitPathBounds.width, fruitPathBounds.height)
+  }
+
 }

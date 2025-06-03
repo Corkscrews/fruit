@@ -108,7 +108,7 @@ public final class FruitView: NSView {
       self.backgroundLayer = nil
       switch self.fruitBackgroundType {
       case .rainbow:
-        self.fruitBackground = RainbowBarsLayer(frame: self.frame, fruit: fruit)
+        self.fruitBackground = RainbowsLayer(frame: self.frame, fruit: fruit)
       case .solid:
         self.fruitBackground = SolidLayer(frame: self.frame, fruit: fruit)
       case .linearGradient:
