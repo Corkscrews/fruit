@@ -6,7 +6,7 @@
 //  Copyright © 2025 T-Pro. All rights reserved.
 //
 
-public enum BackgroundTypes {
+public enum BackgroundTypes: CaseIterable {
   case rainbow
   case solid
   case linearGradient

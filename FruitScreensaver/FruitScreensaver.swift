@@ -17,6 +17,8 @@ final class FruitScreensaver: ScreenSaverView {
   private var lastFrameTime: TimeInterval?
   private var lastFps: Int = 60
 
+  private var fruitChangeTimer: Timer?
+
   override init?(frame: NSRect, isPreview: Bool) {
     super.init(frame: frame, isPreview: isPreview)
     animationTimeInterval = Constant.secondPerFrame
@@ -43,6 +45,37 @@ final class FruitScreensaver: ScreenSaverView {
     fruitView = FruitView(frame: self.bounds, isPreview: isPreview)
     fruitView.autoresizingMask = [.width, .height]
     self.addSubview(fruitView)
+
+    // Start the timer when the view is set up
+    scheduleFruitTypeChange()
+  }
+
+  private func scheduleFruitTypeChange() {
+    fruitChangeTimer?.invalidate()
+    fruitChangeTimer = Timer.scheduledTimer(withTimeInterval: 60.0, repeats: true) { [weak self] _ in
+      self?.changeFruitType()
+    }
+  }
+
+  private func changeFruitType() {
+    // Fade out fruitView over 0.5s, then change, then fade back in
+    let currentType = fruitView.fruitBackgroundType
+    guard let newType = BackgroundTypes
+      .allCases
+      .filter({ $0 != currentType })
+      .randomElement() else {
+      return
+    }
+    NSAnimationContext.runAnimationGroup({ context in
+      context.duration = 1.0
+      fruitView.animator().alphaValue = 0.0
+    }, completionHandler: { [weak self] in
+      self?.fruitView.update(type: newType)
+      NSAnimationContext.runAnimationGroup({ context in
+        context.duration = 1.0
+        self?.fruitView.animator().alphaValue = 1.0
+      }, completionHandler: nil)
+    })
   }
 
   private func setupMetalView() {
