@@ -68,12 +68,12 @@ final class SolidLayer: CALayer, Background {
           let toColor = Self.colorArray[toIndex].usingColorSpace(.deviceRGB) else {
       return Self.colorArray[fromIndex]
     }
-    let t = min(elapsedTime / secondsPerColor, 1.0)
-    let r = fromColor.redComponent + (toColor.redComponent - fromColor.redComponent) * t
-    let g = fromColor.greenComponent + (toColor.greenComponent - fromColor.greenComponent) * t
-    let b = fromColor.blueComponent + (toColor.blueComponent - fromColor.blueComponent) * t
-    let a = fromColor.alphaComponent + (toColor.alphaComponent - fromColor.alphaComponent) * t
-    return NSColor(deviceRed: r, green: g, blue: b, alpha: a)
+    let colorTransitionProgress = min(elapsedTime / secondsPerColor, 1.0)
+    let red = fromColor.redComponent + (toColor.redComponent - fromColor.redComponent) * colorTransitionProgress
+    let green = fromColor.greenComponent + (toColor.greenComponent - fromColor.greenComponent) * colorTransitionProgress
+    let blue = fromColor.blueComponent + (toColor.blueComponent - fromColor.blueComponent) * colorTransitionProgress
+    let alpha = fromColor.alphaComponent + (toColor.alphaComponent - fromColor.alphaComponent) * colorTransitionProgress
+    return NSColor(deviceRed: red, green: green, blue: blue, alpha: alpha)
   }
 
 }

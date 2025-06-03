@@ -140,17 +140,17 @@ final class LinearGradientLayer: CALayer, Background {
 
     // Interpolate colors based on the current transition progress
     for index in 0..<colorCount {
-      let from = fromColors[index]
-      let to = toColors[index]
+      let fromColor = fromColors[index]
+      let toColor = toColors[index]
 
       // Clamp color components to [0,1] to avoid color glitches
-      let r = min(max(from.redComponent + (to.redComponent - from.redComponent) * colorTransitionProgress, 0), 1)
-      let g = min(max(from.greenComponent + (to.greenComponent - from.greenComponent) * colorTransitionProgress, 0), 1)
-      let b = min(max(from.blueComponent + (to.blueComponent - from.blueComponent) * colorTransitionProgress, 0), 1)
-      let a = min(max(from.alphaComponent + (to.alphaComponent - from.alphaComponent) * colorTransitionProgress, 0), 1)
+      let red = min(max(fromColor.redComponent + (toColor.redComponent - fromColor.redComponent) * colorTransitionProgress, 0), 1)
+      let green = min(max(fromColor.greenComponent + (toColor.greenComponent - fromColor.greenComponent) * colorTransitionProgress, 0), 1)
+      let blue = min(max(fromColor.blueComponent + (toColor.blueComponent - fromColor.blueComponent) * colorTransitionProgress, 0), 1)
+      let alpha = min(max(fromColor.alphaComponent + (toColor.alphaComponent - fromColor.alphaComponent) * colorTransitionProgress, 0), 1)
 
       // Create CGColor directly from components
-      self.cgColors.append(CGColor(colorSpace: gradientColorSpace, components: [r,g,b,a])!)
+      self.cgColors.append(CGColor(colorSpace: gradientColorSpace, components: [red, green, blue, alpha])!)
     }
 
     // Create and draw the gradient

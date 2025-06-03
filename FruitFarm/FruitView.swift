@@ -11,8 +11,6 @@ public final class FruitView: NSView {
   public let isPreview: Bool
 
   // MARK: - Core Paths and Layers
-  /// The background shape for the entire view.
-//  private var foreground: NSBezierPath!
   /// The transformed fruit path (logo body).
   private let fruit = Fruit()
   /// The transformed leaf path (logo leaf).

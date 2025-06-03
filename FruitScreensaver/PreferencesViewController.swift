@@ -9,14 +9,14 @@ final class PreferencesViewController:
     BackgroundTypes.rainbow,
     BackgroundTypes.solid,
     BackgroundTypes.linearGradient,
-    BackgroundTypes.circularGradient,
+    BackgroundTypes.circularGradient
   ]
 
   private let itemsText: [String] = [
     "Rainbow",
     "Solid",
     "Linear Gradient",
-    "Circular Gradient",
+    "Circular Gradient"
   ]
 
   private let tableView = NSTableView()
