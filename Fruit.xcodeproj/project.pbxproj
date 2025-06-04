@@ -66,16 +66,27 @@
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				FruitScreensaver.swift,
+				Info.plist,
 				Media.xcassets,
+				Preferences/PreferencesRepository.swift,
+				Preferences/PreferencesViewController.swift,
 			);
 			target = 482BC7EC23FB14F200808C9E /* Fruit */;
+		};
+		48F9C7872DEFC5A50023D72F /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Preferences/PreferencesRepository.swift,
+				Preferences/PreferencesViewController.swift,
+			);
+			target = 48D1EEB22DEBCBCC00712C23 /* FruitShop */;
 		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		48D1EEB42DEBCBCC00712C23 /* FruitShop */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = FruitShop; sourceTree = "<group>"; };
 		48D1EED52DEBCF5600712C23 /* FruitFarm */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = FruitFarm; sourceTree = "<group>"; };
-		48D1EEFF2DEBDA9F00712C23 /* FruitScreensaver */ = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (48D1EF012DEBDA9F00712C23 /* PBXFileSystemSynchronizedBuildFileExceptionSet */, ); explicitFileTypes = {}; explicitFolders = (); path = FruitScreensaver; sourceTree = "<group>"; };
+		48D1EEFF2DEBDA9F00712C23 /* FruitScreensaver */ = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (48D1EF012DEBDA9F00712C23 /* PBXFileSystemSynchronizedBuildFileExceptionSet */, 48F9C7872DEFC5A50023D72F /* PBXFileSystemSynchronizedBuildFileExceptionSet */, ); explicitFileTypes = {}; explicitFolders = (); path = FruitScreensaver; sourceTree = "<group>"; };
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -228,7 +239,7 @@
 			attributes = {
 				LastSwiftUpdateCheck = 1630;
 				LastUpgradeCheck = 1130;
-				ORGANIZATIONNAME = "T-Pro";
+				ORGANIZATIONNAME = Corkscrews;
 				TargetAttributes = {
 					482BC7EC23FB14F200808C9E = {
 						CreatedOnToolsVersion = 11.3;
@@ -440,9 +451,13 @@
 				CODE_SIGN_IDENTITY = "-";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				GENERATE_PKGINFO_FILE = YES;
 				INFOPLIST_FILE = FruitScreensaver/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "$(TARGET_NAME)";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright © 2025 Corkscrews. All rights reserved.";
 				INSTALL_PATH = "$(HOME)/Library/Screen Savers";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -467,9 +482,13 @@
 				CODE_SIGN_IDENTITY = "-";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				GENERATE_PKGINFO_FILE = YES;
 				INFOPLIST_FILE = FruitScreensaver/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "$(TARGET_NAME)";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright © 2025 Corkscrews. All rights reserved.";
 				INSTALL_PATH = "$(HOME)/Library/Screen Savers";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -504,7 +523,7 @@
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = FruitShop/Info.plist;
-				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright © 2025 T-Pro. All rights reserved.";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright © 2025 Corkscrews. All rights reserved.";
 				INFOPLIST_KEY_NSMainStoryboardFile = "";
 				INFOPLIST_KEY_NSPrincipalClass = NSApplication;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -542,7 +561,7 @@
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = FruitShop/Info.plist;
-				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright © 2025 T-Pro. All rights reserved.";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright © 2025 Corkscrews. All rights reserved.";
 				INFOPLIST_KEY_NSMainStoryboardFile = "";
 				INFOPLIST_KEY_NSPrincipalClass = NSApplication;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -579,7 +598,7 @@
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright © 2025 T-Pro. All rights reserved.";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright © 2025 Corkscrews. All rights reserved.";
 				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -623,7 +642,7 @@
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright © 2025 T-Pro. All rights reserved.";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright © 2025 Corkscrews. All rights reserved.";
 				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",

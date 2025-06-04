@@ -5,15 +5,27 @@ import FruitFarm
 final class FruitScreensaver: ScreenSaverView {
 
   // MARK: Constant
+
   private enum Constant {
     static let secondPerFrame = 1.0 / 60.0
   }
 
+  // MARK: Views
+
   private var fruitView: FruitView!
   private var metalView: MetalView?
 
+  // MARK: Frame control
+
   private var lastFrameTime: TimeInterval?
   private var lastFps: Int = 60
+
+  // MARK: Preferences
+
+  private let preferencesRepository: PreferencesRepository = PreferencesRepositoryImpl()
+  private lazy var preferencesWindowController = createPreferencesWindow(
+    preferencesRepository: self.preferencesRepository
+  )
 
   override init?(frame: NSRect, isPreview: Bool) {
     super.init(frame: frame, isPreview: isPreview)
@@ -38,8 +50,12 @@ final class FruitScreensaver: ScreenSaverView {
   }
 
   private func setupFruitView(isPreview: Bool) {
-    fruitView = FruitView(frame: self.bounds, isPreview: isPreview)
+    fruitView = FruitView(
+      frame: self.bounds,
+      mode: isPreview ? .preview : .default
+    )
     fruitView.autoresizingMask = [.width, .height]
+    fruitView.update(mode: preferencesRepository.defaultFruitMode())
     self.addSubview(fruitView)
   }
 
@@ -122,4 +138,14 @@ final class FruitScreensaver: ScreenSaverView {
     metalView?.isHidden = edrMax == 1.0
   }
 
+}
+
+// MARK: - Preferences
+extension FruitScreensaver {
+  override var hasConfigureSheet: Bool {
+    true
+  }
+  override var configureSheet: NSWindow? {
+    preferencesWindowController
+  }
 }

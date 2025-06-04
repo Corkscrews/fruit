@@ -1,7 +1,7 @@
 import Cocoa
 
 extension NSBezierPath {
-  var quartzPath: CGPath {
+  public var quartzPath: CGPath {
     if #available(macOS 14.0, *) {
       return self.cgPath
     }

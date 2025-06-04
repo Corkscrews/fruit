@@ -2,6 +2,12 @@
 
 ## [1.3.0]
 
+### Features
+
+ - Added more background modes. Now you can select between `Rainbow`, `Solid`, `Linear Gradient` and `Circular Gradient`.
+
+## [1.3.0]
+
 ### Minor Changes
 
 - Add thumbnail and correct the preview.

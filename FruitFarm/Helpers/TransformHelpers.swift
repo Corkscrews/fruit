@@ -1,5 +1,11 @@
 import Cocoa
 
+struct Transform {
+  let scale: AffineTransform
+  let rotation: AffineTransform
+  let translation: AffineTransform
+}
+
 struct TransformHelpers {
   static func rotationTransform(_ angle: CGFloat, point: NSPoint) -> NSAffineTransform {
     let xfm = translationTransform(point)
