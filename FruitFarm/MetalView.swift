@@ -74,9 +74,9 @@ public final class MetalView: MTKView, MTKViewDelegate {
       DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
         self?.image = transparent
       }
-    } else {
-      image = transparent
+      return
     }
+    image = transparent
   }
 
   // MARK: - Image Preparation

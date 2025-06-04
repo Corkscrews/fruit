@@ -188,11 +188,11 @@ public final class FruitView: NSView {
     case .rainbow:
       return RainbowsLayer(frame: self.frame, fruit: fruit)
     case .solid:
-      return SolidLayer(frame: self.frame, fruit: fruit)
+      return MetalSolidLayer(frame: self.frame, fruit: fruit)
     case .linearGradient:
-      return LinearGradientLayer(frame: self.frame, fruit: fruit)
+      return MetalLinearGradientLayer(frame: self.frame, fruit: fruit)
     case .circularGradient:
-      return CircularGradientLayer(frame: self.frame, fruit: fruit)
+      return MetalCircularGradientLayer(frame: self.frame, fruit: fruit)
     }
   }
 
