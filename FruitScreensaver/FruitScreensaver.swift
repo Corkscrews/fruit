@@ -23,6 +23,9 @@ final class FruitScreensaver: ScreenSaverView {
   // MARK: Preferences
 
   private let preferencesRepository: PreferencesRepository = PreferencesRepositoryImpl()
+  private lazy var preferencesWindowController = createPreferencesWindow(
+    preferencesRepository: self.preferencesRepository
+  )
 
   override init?(frame: NSRect, isPreview: Bool) {
     super.init(frame: frame, isPreview: isPreview)
@@ -143,6 +146,6 @@ extension FruitScreensaver {
     true
   }
   override var configureSheet: NSWindow? {
-    createPreferencesWindow(preferencesRepository: self.preferencesRepository)
+    preferencesWindowController
   }
 }

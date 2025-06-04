@@ -83,7 +83,6 @@ public final class FruitView: NSView {
   }
 
   private func randomlyChangeFruitType() {
-    print("randomlyChangeFruitType")
     // Fade out fruitView over 0.5s, then change, then fade back in.
     NSAnimationContext.runAnimationGroup({ context in
       context.duration = 1.0

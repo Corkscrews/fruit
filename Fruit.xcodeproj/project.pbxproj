@@ -66,6 +66,7 @@
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				FruitScreensaver.swift,
+				Info.plist,
 				Media.xcassets,
 				Preferences/PreferencesRepository.swift,
 				Preferences/PreferencesViewController.swift,
@@ -451,6 +452,8 @@
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				GENERATE_PKGINFO_FILE = YES;
 				INFOPLIST_FILE = FruitScreensaver/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "$(TARGET_NAME)";
 				INSTALL_PATH = "$(HOME)/Library/Screen Savers";
@@ -478,6 +481,8 @@
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				GENERATE_PKGINFO_FILE = YES;
 				INFOPLIST_FILE = FruitScreensaver/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "$(TARGET_NAME)";
 				INSTALL_PATH = "$(HOME)/Library/Screen Savers";

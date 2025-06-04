@@ -45,6 +45,5 @@ class PreferencesRepositoryImpl: PreferencesRepository {
     }
     // Synchronize UserDefaults to ensure the value is saved immediately.
     UserDefaults.standard.synchronize()
-    print("DDD \(defaultBackgroundType())")
   }
 }

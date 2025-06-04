@@ -9,11 +9,7 @@ func createPreferencesWindow(preferencesRepository: PreferencesRepository) -> NS
   let viewController = PreferencesViewController(preferencesRepository: preferencesRepository)
   let window = NSWindow(contentViewController: viewController)
   window.title = "Preferences"
-  window.styleMask.insert(.titled)
-  window.styleMask.insert(.closable)
-  window.styleMask.insert(.miniaturizable)
   window.styleMask.insert(.resizable)
-  window.setFrameAutosaveName("PreferencesWindow")
   window.center()
   window.makeKeyAndOrderFront(nil)
   viewController.window = window  // Store the window reference
@@ -28,7 +24,7 @@ final class PreferencesViewController:
   // Store reference to the window
   weak var window: NSWindow?
 
-  var preferencesRepository: PreferencesRepository!
+  var preferencesRepository: PreferencesRepository?
 
   private var fruitMode: FruitMode?
 
@@ -37,7 +33,7 @@ final class PreferencesViewController:
   private lazy var fruitView: FruitView = {
     let fruitView = FruitView(frame: self.view.bounds, mode: .preferences)
     fruitView.autoresizingMask = [.width, .height]
-    fruitView.update(mode: preferencesRepository.defaultBackgroundType())
+    fruitView.update(mode: preferencesRepository!.defaultBackgroundType())
     return fruitView
   }()
 
@@ -50,38 +46,38 @@ final class PreferencesViewController:
   /// The view containing the controls for the preferences.
   private lazy var controlsView: PreferencesControlsView = {
     let controlsView = PreferencesControlsView(
-      fruitMode: preferencesRepository.defaultBackgroundType()
+      fruitMode: preferencesRepository!.defaultBackgroundType()
     )
     controlsView.translatesAutoresizingMaskIntoConstraints = false
-    controlsView.onSaveTapped = { [weak self] in
-      if let fruitMode = self?.fruitMode {
-        self?.preferencesRepository.selectedFruitType(fruitMode)
-      }
-      self?.window?.close()
-    }
-    controlsView.onBackgroundTypeChanged = { [weak self] selectedIndex in
-      if selectedIndex == 0 {
-        // TODO: Set random background type mode
-        let fruitMode = FruitMode.random
-        self?.fruitMode = fruitMode
-        self?.fruitView.update(mode: fruitMode)
+    controlsView.onDoneTapped = { [weak self] in
+      guard let window = self?.window else {
         return
       }
-      
-      // Adjust index to account for "Random" option
-      let backgroundTypeIndex = selectedIndex - 1
-      if backgroundTypeIndex >= 0 && backgroundTypeIndex < FruitType.allCases.count {
-        let fruitType = FruitType.allCases[backgroundTypeIndex]
-        let fruitMode = FruitMode.specific(fruitType)
-        self?.fruitMode = fruitMode
-        self?.fruitView.update(mode: fruitMode)
+      if let sheetParent = window.sheetParent {
+        sheetParent.endSheet(window)
       }
+      window.close()
+    }
+    controlsView.onBackgroundTypeChanged = { [weak self] selectedIndex in
+      let fruitMode: FruitMode
+      if selectedIndex == 0 {
+        fruitMode = .random
+      } else {
+        let index = selectedIndex - 1
+        guard index >= 0, index < FruitType.allCases.count else { return }
+        fruitMode = .specific(FruitType.allCases[index])
+      }
+      self?.fruitMode = fruitMode
+      self?.fruitView.update(mode: fruitMode)
+      self?.preferencesRepository!.selectedFruitType(fruitMode)
     }
     return controlsView
   }()
 
   private lazy var versionLabel: NSTextField = {
-    let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "Unknown"
+    let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String
+      ?? Bundle.main.infoDictionary?["CFBundleVersion"] as? String
+      ?? "Unknown"
     let copyright = Bundle.main.infoDictionary?["NSHumanReadableCopyright"] as? String ?? ""
     let labelText = "Version: \(version) - Thank you! 😊\n\(copyright)"
     let label = NSTextField(labelWithString: labelText)
@@ -101,6 +97,7 @@ final class PreferencesViewController:
     if let displayLink = displayLink {
       CVDisplayLinkStop(displayLink)
     }
+    preferencesRepository = nil
     window = nil
     // Remove notification observer
     NotificationCenter.default.removeObserver(self)
@@ -232,7 +229,7 @@ final class PreferencesControlsView: NSView {
   private let fruitMode: FruitMode
 
   /// Callback for when the save button is tapped.
-  var onSaveTapped: (() -> Void)?
+  var onDoneTapped: (() -> Void)?
   
   /// Callback for when the background type selection changes.
   var onBackgroundTypeChanged: ((Int) -> Void)?
@@ -268,7 +265,7 @@ final class PreferencesControlsView: NSView {
   /// Button to save the current preferences and close the window.
   private lazy var saveButton: NSButton = {
     let optionsButton = NSButton(
-      title: "Save", target: self, action: #selector(saveButtonTapped)
+      title: "Done", target: self, action: #selector(doneButtonTapped)
     )
     optionsButton.bezelStyle = .rounded
     optionsButton.translatesAutoresizingMaskIntoConstraints = false
@@ -277,7 +274,7 @@ final class PreferencesControlsView: NSView {
 
   deinit {
     NotificationCenter.default.removeObserver(self)
-    onSaveTapped = nil
+    onDoneTapped = nil
     onBackgroundTypeChanged = nil
   }
 
@@ -328,8 +325,8 @@ final class PreferencesControlsView: NSView {
   // MARK: - Actions
   
   @objc
-  private func saveButtonTapped() {
-    onSaveTapped?()
+  private func doneButtonTapped() {
+    onDoneTapped?()
   }
   
   @objc
