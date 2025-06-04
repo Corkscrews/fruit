@@ -2,8 +2,16 @@ import Cocoa
 import FruitFarm
 
 final class FruitShopViewController: NSViewController {
-  private var fruitView: FruitView!
-  private var metalView: MetalView!
+  private lazy var fruitView: FruitView = {
+    let fruitView = FruitView(frame: self.view.bounds)
+    fruitView.autoresizingMask = [.width, .height]
+    return fruitView
+  }()
+  private lazy var metalView: MetalView = {
+    let metalView = MetalView(frame: view.bounds, frameRate: 1, contrast: 1.0, brightness: 1.0)
+    metalView.autoresizingMask = [.width, .height]
+    return metalView
+  }()
 
   private var displayLink: CVDisplayLink?
 
@@ -19,12 +27,7 @@ final class FruitShopViewController: NSViewController {
     self.view.wantsLayer = true // Ensure the view has a backing layer
     self.view.layer?.backgroundColor = NSColor.black.cgColor
 
-    fruitView = FruitView(frame: self.view.bounds)
-    fruitView.autoresizingMask = [.width, .height]
     self.view.addSubview(fruitView)
-
-    metalView = MetalView(frame: view.bounds, frameRate: 3, contrast: 1.0, brightness: 1.0)
-    metalView.autoresizingMask = [.width, .height]
     view.addSubview(metalView)
 
     setupDisplayLink()
@@ -59,7 +62,7 @@ final class FruitShopViewController: NSViewController {
       let fps: Int = frameDuration > 0 ? Int(timeScale / frameDuration) : 60
 
       DispatchQueue.main.async {
-        controller.fruitView?.animateOneFrame(framesPerSecond: fps)
+        controller.fruitView.animateOneFrame(framesPerSecond: fps)
       }
       return kCVReturnSuccess
     }, UnsafeMutableRawPointer(Unmanaged.passUnretained(self).toOpaque()))
@@ -81,7 +84,7 @@ final class FruitShopViewController: NSViewController {
   private func checkEDR() {
     guard let screen = view.window?.screen else { return }
     let edrMax = screen.maximumPotentialExtendedDynamicRangeColorComponentValue
-    metalView?.isHidden = edrMax == 1.0
+    metalView.isHidden = edrMax == 1.0
   }
 
   // MARK: - Options Button
@@ -99,40 +102,24 @@ final class FruitShopViewController: NSViewController {
 
   @objc
   private func optionsButtonTapped() {
-//    let appDelegate = NSApplication.shared.delegate as! AppDelegate
-//    appDelegate.launchPreferencesWindow()
-    addMenu()
-  }
+    let menuItems: [(title: String, selector: Selector)] = [
+      ("Rainbow Bars", #selector(selectBackground(_:))),
+      ("Solid", #selector(selectBackground(_:))),
+      ("Linear Gradient", #selector(selectBackground(_:))),
+      ("Circular Gradient", #selector(selectBackground(_:)))
+    ]
 
-  // MARK: - Menu
-
-  private func addMenu() {
     let menu = NSMenu()
-
-    menu.addItem(
-      withTitle: "Rainbow Bars",
-      action: #selector(selectRainbowBackground),
-      keyEquivalent: ""
-    )
-    menu.addItem(
-      withTitle: "Solid",
-      action: #selector(selectSolidBackground),
-      keyEquivalent: ""
-    )
-    menu.addItem(
-      withTitle: "Linear Gradient",
-      action: #selector(selectLinearGradientBackground),
-      keyEquivalent: ""
-    )
-    menu.addItem(
-      withTitle: "Circular Gradient",
-      action: #selector(selectCircularGradientBackground),
-      keyEquivalent: ""
-    )
+    for (index, item) in menuItems.enumerated() {
+      let menuItem = NSMenuItem(title: item.title, action: item.selector, keyEquivalent: "")
+      menuItem.target = self
+      menuItem.tag = index
+      menu.addItem(menuItem)
+    }
 
     let buttonOrigin = CGPoint(x: self.view.bounds.maxX - 100, y: 40)
     let menuOrigin = self.view.convert(buttonOrigin, to: nil)
-    let event = NSEvent.mouseEvent(
+    if let event = NSEvent.mouseEvent(
       with: .leftMouseDown,
       location: menuOrigin,
       modifierFlags: [],
@@ -142,29 +129,25 @@ final class FruitShopViewController: NSViewController {
       eventNumber: 0,
       clickCount: 1,
       pressure: 1
-    )
-
-    NSMenu.popUpContextMenu(menu, with: event!, for: self.view)
+    ) {
+      NSMenu.popUpContextMenu(menu, with: event, for: self.view)
+    }
   }
 
   @objc
-  private func selectRainbowBackground() {
-    fruitView.update(type: .rainbow)
-  }
-
-  @objc
-  private func selectSolidBackground() {
-    fruitView.update(type: .solid)
-  }
-
-  @objc
-  private func selectLinearGradientBackground() {
-    fruitView.update(type: .linearGradient)
-  }
-
-  @objc
-  private func selectCircularGradientBackground() {
-    fruitView.update(type: .circularGradient)
+  private func selectBackground(_ sender: NSMenuItem) {
+    switch sender.tag {
+    case 0:
+      fruitView.update(type: .rainbow)
+    case 1:
+      fruitView.update(type: .solid)
+    case 2:
+      fruitView.update(type: .linearGradient)
+    case 3:
+      fruitView.update(type: .circularGradient)
+    default:
+      break
+    }
   }
 
 }

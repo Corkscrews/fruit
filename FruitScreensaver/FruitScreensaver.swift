@@ -9,14 +9,13 @@ final class FruitScreensaver: ScreenSaverView {
     static let secondPerFrame = 1.0 / 60.0
   }
 
-  private lazy var preferences = PreferencesViewController()
-
   private var fruitView: FruitView!
   private var metalView: MetalView?
 
+  // MARK: Frame control
+
   private var lastFrameTime: TimeInterval?
   private var lastFps: Int = 60
-
   private var fruitChangeTimer: Timer?
 
   override init?(frame: NSRect, isPreview: Bool) {
@@ -60,7 +59,7 @@ final class FruitScreensaver: ScreenSaverView {
   private func changeFruitType() {
     // Fade out fruitView over 0.5s, then change, then fade back in
     let currentType = fruitView.fruitBackgroundType
-    guard let newType = BackgroundTypes
+    guard let newType = FruitType
       .allCases
       .filter({ $0 != currentType })
       .randomElement() else {
@@ -157,4 +156,14 @@ final class FruitScreensaver: ScreenSaverView {
     metalView?.isHidden = edrMax == 1.0
   }
 
+}
+
+// MARK: - Preferences
+extension FruitScreensaver {
+  override var hasConfigureSheet: Bool {
+    true
+  }
+  override var configureSheet: NSWindow? {
+    createPreferencesWindow()
+  }
 }

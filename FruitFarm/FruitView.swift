@@ -20,7 +20,7 @@ public final class FruitView: NSView {
   /// The single layer that draws the background layer inside the fruit.
   private var fruitBackground: (CALayer & Background)?
   /// The type of background
-  public private(set) var fruitBackgroundType: BackgroundTypes = .rainbow
+  public private(set) var fruitBackgroundType: FruitType = .rainbow
 
   /// Initializes the view and sets up the initial geometry and animation.
   public init(frame frameRect: NSRect, isPreview: Bool = true) {
@@ -40,7 +40,7 @@ public final class FruitView: NSView {
     setupFruitAndLeafObjects()
   }
 
-  public func update(type fruitBackgroundType: BackgroundTypes) {
+  public func update(type fruitBackgroundType: FruitType) {
     if self.fruitBackgroundType == fruitBackgroundType {
       return
     }
