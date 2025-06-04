@@ -6,7 +6,26 @@ Screensaver of the vintage 🍎 logo made purely with `NSBezierPath` and masks i
 
 Compatible with macOS 11.5 and later.
 
-<img src="./art/screenshot.gif" width="600"/>
+<p align="center">
+  <img src="https://github.com/Corkscrews/fruit/blob/master/art/screenshot.gif" width="600"/>
+</p>
+
+### Options
+
+Now you can select four different fruit types:
+
+ - Rainbow
+ - Solid
+ - Linear gradient
+ - Circular gradient
+  
+*You are welcome to create new designs through PRs!*
+
+You can change those under the options from `System Settings` -> `Screen saver` -> `Options...`.
+
+<p align="center">
+  <img src="https://github.com/Corkscrews/fruit/blob/master/art/options_menu.png" width="600"/>
+</p>
 
 ### Install
 
