@@ -108,11 +108,11 @@ final class PreferencesViewController:
     self.preferencesRepository = preferencesRepository
     super.init(nibName: nil, bundle: nil)
   }
-  
+
   required init?(coder: NSCoder) {
     fatalError("init(coder:) has not been implemented")
   }
-  
+
   /// Sets up the view controller's view and subviews.
   /// Called automatically when the view controller is loaded.
   override func loadView() {
@@ -148,7 +148,7 @@ final class PreferencesViewController:
       versionLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16.0),
 
       controlsView.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-      controlsView.bottomAnchor.constraint(equalTo: versionLabel.topAnchor, constant: -24.0),
+      controlsView.bottomAnchor.constraint(equalTo: versionLabel.topAnchor, constant: -24.0)
     ])
   }
 
@@ -231,10 +231,10 @@ final class PreferencesControlsView: NSView {
 
   /// Callback for when the save button is tapped.
   var onDoneTapped: (() -> Void)?
-  
+
   /// Callback for when the background type selection changes.
   var onBackgroundTypeChanged: ((Int) -> Void)?
-  
+
   /// A combo box for selecting different background types.
   /// Includes options for all available background types plus a random option.
   private lazy var optionsComboBox: NSComboBox = {
@@ -251,7 +251,7 @@ final class PreferencesControlsView: NSView {
     comboBox.selectItem(at: index + 1)
     comboBox.isEditable = false
     comboBox.translatesAutoresizingMaskIntoConstraints = false
-    
+
     // Add notification observer for selection changes
     NotificationCenter.default.addObserver(
       self,
@@ -259,10 +259,10 @@ final class PreferencesControlsView: NSView {
       name: NSComboBox.selectionDidChangeNotification,
       object: comboBox
     )
-    
+
     return comboBox
   }()
-  
+
   /// Button to save the current preferences and close the window.
   private lazy var saveButton: NSButton = {
     let optionsButton = NSButton(
@@ -280,7 +280,7 @@ final class PreferencesControlsView: NSView {
   }
 
   // MARK: - Initialization
-  
+
   init(fruitMode: FruitMode) {
     self.fruitMode = fruitMode
     super.init(frame: NSRect.zero)
@@ -288,11 +288,11 @@ final class PreferencesControlsView: NSView {
     addSubviews()
     setupConstraints()
   }
-  
+
   required init?(coder: NSCoder) {
     fatalError("init(coder:) has not been implemented")
   }
-  
+
   // MARK: - Setup
 
   private func setupContainer() {
@@ -303,12 +303,12 @@ final class PreferencesControlsView: NSView {
     layer?.borderColor = NSColor.separatorColor.cgColor
     layer?.backgroundColor = NSColor.windowBackgroundColor.withAlphaComponent(0.95).cgColor
   }
-  
+
   private func addSubviews() {
     addSubview(optionsComboBox)
     addSubview(saveButton)
   }
-  
+
   private func setupConstraints() {
     NSLayoutConstraint.activate([
       optionsComboBox.widthAnchor.constraint(equalToConstant: estimateComboBoxWidth()),
@@ -322,23 +322,23 @@ final class PreferencesControlsView: NSView {
       saveButton.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -16.0)
     ])
   }
-  
+
   // MARK: - Actions
-  
+
   @objc
   private func doneButtonTapped() {
     onDoneTapped?()
   }
-  
+
   @objc
   private func comboBoxSelectionDidChange(_ notification: Notification) {
     guard let comboBox = notification.object as? NSComboBox else { return }
     let selectedIndex = comboBox.indexOfSelectedItem
     onBackgroundTypeChanged?(selectedIndex)
   }
-  
+
   // MARK: - Helper Methods
-  
+
   /// Estimates the required width for the combo box based on its content.
   /// Takes into account the font size and adds padding for the dropdown arrow.
   /// - Returns: The estimated width needed for the combo box, capped at 140 points.
@@ -354,7 +354,7 @@ final class PreferencesControlsView: NSView {
     }
     return min(140, maxWidth + 40)
   }
-  
+
   /// Builds the list of menu items for the combo box.
   /// Includes a "Random" option followed by all available background types.
   /// - Returns: An array of strings representing the menu items.
