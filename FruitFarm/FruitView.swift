@@ -2,13 +2,20 @@ import Cocoa
 import QuartzCore
 import Foundation
 
+@frozen
+public enum FruitViewMode {
+  case preview
+  case preferences
+  case `default`
+}
+
 // MARK: - FruitView
 /// FruitView is a custom NSView that draws and animates a stylized fruit logo with
 /// colored bars, similar to the vintage Apple logo.
 /// It uses Core Animation layers for efficient rendering and smooth animation.
 public final class FruitView: NSView {
 
-  public let isPreview: Bool
+  public let mode: FruitViewMode
 
   // MARK: - Core Paths and Layers
   /// The transformed fruit path (logo body).
@@ -20,34 +27,80 @@ public final class FruitView: NSView {
   /// The single layer that draws the background layer inside the fruit.
   private var fruitBackground: (CALayer & Background)?
   /// The type of background
-  public private(set) var fruitBackgroundType: FruitType = .rainbow
+  public private(set) var fruitMode: FruitMode = FruitMode.specific(.rainbow)
+  /// Timer to randomly change the fruit type, only used when random mode is selected.
+  private var fruitChangeTimer: Timer?
+
+  deinit {
+    fruitChangeTimer?.invalidate()
+    fruitChangeTimer = nil
+  }
 
   /// Initializes the view and sets up the initial geometry and animation.
-  public init(frame frameRect: NSRect, isPreview: Bool = true) {
-    self.isPreview = isPreview
+  public init(frame frameRect: NSRect, mode: FruitViewMode) {
+    self.mode = mode
     super.init(frame: frameRect)
     setupFruitAndLeafObjects()
   }
 
   @available(*, unavailable, message: "Use init(frame:isPreview:) instead")
   public override convenience init(frame frameRect: NSRect) {
-    self.init(frame: frameRect, isPreview: false)
+    self.init(frame: frameRect, mode: FruitViewMode.default)
   }
 
   required init?(coder: NSCoder) {
-    self.isPreview = false
+    self.mode = FruitViewMode.default
     super.init(coder: coder)
     setupFruitAndLeafObjects()
   }
 
-  public func update(type fruitBackgroundType: FruitType) {
-    if self.fruitBackgroundType == fruitBackgroundType {
+  public func update(mode fruitMode: FruitMode) {
+    if self.fruitMode == fruitMode {
       return
     }
-    self.fruitBackgroundType = fruitBackgroundType
+    self.fruitMode = fruitMode
     self.fruitBackground?.removeFromSuperlayer()
     self.fruitBackground = nil
     self.needsDisplay = true
+    // Specific case when random mode is selected, we need to toggle the mode to
+    // a random fruit type. When the user selects a specific fruit type, we need to 
+    // display the specific fruit type and disable the random mode.
+    toggleRandomMode(enabled: self.fruitMode == FruitMode.random)
+  }
+
+  private func toggleRandomMode(enabled: Bool) {
+    fruitChangeTimer?.invalidate()
+    if !enabled {
+      fruitChangeTimer = nil
+      return
+    }
+    fruitChangeTimer = Timer.scheduledTimer(
+      withTimeInterval: mode == .preferences ? 8.0 : 60.0,
+      repeats: true
+    ) { [weak self] _ in
+      self?.randomlyChangeFruitType()
+    }
+  }
+
+  private func randomlyChangeFruitType() {
+    print("randomlyChangeFruitType")
+    // Fade out fruitView over 0.5s, then change, then fade back in.
+    NSAnimationContext.runAnimationGroup({ context in
+      context.duration = 1.0
+      self.animator().alphaValue = 0.0
+    }, completionHandler: { [weak self] in
+
+      // This will force a random fruit to be loaded.
+      self?.fruitBackground?.removeFromSuperlayer()
+      self?.fruitBackground = nil
+      self?.needsDisplay = true
+
+      // Now fade back in.
+      NSAnimationContext.runAnimationGroup({ context in
+        context.duration = 1.0
+        self?.animator().alphaValue = 1.0
+      }, completionHandler: nil)
+    })
   }
 
   /// Applies scaling, rotation, and translation to the fruit and leaf paths so they are
@@ -76,7 +129,7 @@ public final class FruitView: NSView {
   }
 
   private func scale() -> CGFloat {
-    if isPreview {
+    if self.mode == FruitViewMode.preview {
       return ((self.frame.width / 1728) + (self.frame.height / 1117)) * 1.5
     }
     let finalWidth = fruit.originalPath.bounds.size.width * 2.0
@@ -104,15 +157,11 @@ public final class FruitView: NSView {
     } else {
       // Necessary otherwise the sublayer is not recovered.
       self.backgroundLayer = nil
-      switch self.fruitBackgroundType {
-      case .rainbow:
-        self.fruitBackground = RainbowsLayer(frame: self.frame, fruit: fruit)
-      case .solid:
-        self.fruitBackground = SolidLayer(frame: self.frame, fruit: fruit)
-      case .linearGradient:
-        self.fruitBackground = LinearGradientLayer(frame: self.frame, fruit: fruit)
-      case .circularGradient:
-        self.fruitBackground = CircularGradientLayer(frame: self.frame, fruit: fruit)
+      switch self.fruitMode {
+      case .random:
+        self.fruitBackground = buildFruitBackground(FruitType.allCases.randomElement()!)
+      case .specific(let fruitType):
+        self.fruitBackground = buildFruitBackground(fruitType)
       }
     }
 
@@ -132,6 +181,19 @@ public final class FruitView: NSView {
     backgroundLayer!.mask = createLeafAndFruitMask()
     if needsAddBackgroundLayer {
       layer.addSublayer(backgroundLayer!)
+    }
+  }
+
+  private func buildFruitBackground(_ fruitType: FruitType) -> (CALayer & Background)? {
+    switch fruitType {
+    case .rainbow:
+      return RainbowsLayer(frame: self.frame, fruit: fruit)
+    case .solid:
+      return SolidLayer(frame: self.frame, fruit: fruit)
+    case .linearGradient:
+      return LinearGradientLayer(frame: self.frame, fruit: fruit)
+    case .circularGradient:
+      return CircularGradientLayer(frame: self.frame, fruit: fruit)
     }
   }
 

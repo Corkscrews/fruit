@@ -5,8 +5,8 @@ import FruitFarm
 
 /// Creates and configures the preferences window with its view controller.
 /// - Returns: A configured NSWindow instance containing the preferences interface.
-func createPreferencesWindow() -> NSWindow {
-  let viewController = PreferencesViewController()
+func createPreferencesWindow(preferencesRepository: PreferencesRepository) -> NSWindow {
+  let viewController = PreferencesViewController(preferencesRepository: preferencesRepository)
   let window = NSWindow(contentViewController: viewController)
   window.title = "Preferences"
   window.styleMask.insert(.titled)
@@ -28,31 +28,53 @@ final class PreferencesViewController:
   // Store reference to the window
   weak var window: NSWindow?
 
+  var preferencesRepository: PreferencesRepository!
+
+  private var fruitMode: FruitMode?
+
   /// The main view displaying the fruit animation.
   /// This view is configured to automatically resize with its parent view.
   private lazy var fruitView: FruitView = {
-    let fruitView = FruitView(frame: self.view.bounds)
+    let fruitView = FruitView(frame: self.view.bounds, mode: .preferences)
     fruitView.autoresizingMask = [.width, .height]
+    fruitView.update(mode: preferencesRepository.defaultBackgroundType())
     return fruitView
+  }()
+
+  private lazy var metalView: MetalView = {
+    let metalView = MetalView(frame: view.bounds, frameRate: 1, contrast: 1.0, brightness: 1.0)
+    metalView.autoresizingMask = [.width, .height]
+    return metalView
   }()
 
   /// The view containing the controls for the preferences.
   private lazy var controlsView: PreferencesControlsView = {
-    let controlsView = PreferencesControlsView()
+    let controlsView = PreferencesControlsView(
+      fruitMode: preferencesRepository.defaultBackgroundType()
+    )
     controlsView.translatesAutoresizingMaskIntoConstraints = false
     controlsView.onSaveTapped = { [weak self] in
+      if let fruitMode = self?.fruitMode {
+        self?.preferencesRepository.selectedFruitType(fruitMode)
+      }
       self?.window?.close()
     }
     controlsView.onBackgroundTypeChanged = { [weak self] selectedIndex in
       if selectedIndex == 0 {
         // TODO: Set random background type mode
+        let fruitMode = FruitMode.random
+        self?.fruitMode = fruitMode
+        self?.fruitView.update(mode: fruitMode)
         return
       }
       
       // Adjust index to account for "Random" option
       let backgroundTypeIndex = selectedIndex - 1
       if backgroundTypeIndex >= 0 && backgroundTypeIndex < FruitType.allCases.count {
-        self?.fruitView.update(type: FruitType.allCases[backgroundTypeIndex])
+        let fruitType = FruitType.allCases[backgroundTypeIndex]
+        let fruitMode = FruitMode.specific(fruitType)
+        self?.fruitMode = fruitMode
+        self?.fruitView.update(mode: fruitMode)
       }
     }
     return controlsView
@@ -84,6 +106,15 @@ final class PreferencesViewController:
     NotificationCenter.default.removeObserver(self)
   }
 
+  init(preferencesRepository: PreferencesRepository) {
+    self.preferencesRepository = preferencesRepository
+    super.init(nibName: nil, bundle: nil)
+  }
+  
+  required init?(coder: NSCoder) {
+    fatalError("init(coder:) has not been implemented")
+  }
+  
   /// Sets up the view controller's view and subviews.
   /// Called automatically when the view controller is loaded.
   override func loadView() {
@@ -104,6 +135,7 @@ final class PreferencesViewController:
   /// Adds all subviews to the main view.
   private func addSubviews() {
     self.view.addSubview(fruitView)
+    self.view.addSubview(metalView)
     self.view.addSubview(versionLabel)
     self.view.addSubview(controlsView)
   }
@@ -126,7 +158,15 @@ final class PreferencesViewController:
   /// Sets up the initial frame for the fruit view.
   override func viewDidLoad() {
     super.viewDidLoad()
+//    fruitView.frame = self.view.bounds
+//    metalView.frame = self.view.bounds
+    addScreenDidChangeNotification()
+  }
+
+  override func viewDidLayout() {
+    super.viewDidLayout()
     fruitView.frame = self.view.bounds
+    metalView.frame = self.view.bounds
   }
 
   // MARK: - Display Link
@@ -159,6 +199,26 @@ final class PreferencesViewController:
 
     CVDisplayLinkStart(displayLink)
   }
+
+  // MARK: - EDR
+
+  private func addScreenDidChangeNotification() {
+    checkEDR()
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(checkEDR),
+      name: NSWindow.didChangeScreenNotification,
+      object: view.window
+    )
+  }
+
+  @objc
+  private func checkEDR() {
+    guard let screen = view.window?.screen else { return }
+    let edrMax = screen.maximumPotentialExtendedDynamicRangeColorComponentValue
+    metalView.isHidden = edrMax == 1.0
+  }
+
 }
 
 // MARK: - PreferencesControlsView
@@ -166,8 +226,11 @@ final class PreferencesViewController:
 /// A view that contains the controls for the preferences window.
 /// Handles the combo box for background selection and the save button.
 final class PreferencesControlsView: NSView {
+
   // MARK: - Properties
-  
+
+  private let fruitMode: FruitMode
+
   /// Callback for when the save button is tapped.
   var onSaveTapped: (() -> Void)?
   
@@ -179,7 +242,15 @@ final class PreferencesControlsView: NSView {
   private lazy var optionsComboBox: NSComboBox = {
     let comboBox = NSComboBox()
     comboBox.addItems(withObjectValues: buildMenuItems())
-    comboBox.selectItem(at: 1)
+
+    let index: Int
+    switch fruitMode {
+    case .random:
+      index = -1 // Default to random
+    case .specific(let fruitType):
+      index = FruitType.allCases.firstIndex(of: fruitType) ?? 0
+    }
+    comboBox.selectItem(at: index + 1)
     comboBox.isEditable = false
     comboBox.translatesAutoresizingMaskIntoConstraints = false
     
@@ -212,8 +283,9 @@ final class PreferencesControlsView: NSView {
 
   // MARK: - Initialization
   
-  override init(frame frameRect: NSRect) {
-    super.init(frame: frameRect)
+  init(fruitMode: FruitMode) {
+    self.fruitMode = fruitMode
+    super.init(frame: NSRect.zero)
     setupContainer()
     addSubviews()
     setupConstraints()
@@ -222,7 +294,6 @@ final class PreferencesControlsView: NSView {
   required init?(coder: NSCoder) {
     fatalError("init(coder:) has not been implemented")
   }
-
   
   // MARK: - Setup
 
@@ -251,8 +322,6 @@ final class PreferencesControlsView: NSView {
       saveButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -16.0),
       saveButton.topAnchor.constraint(equalTo: topAnchor, constant: 16.0),
       saveButton.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -16.0)
-//      saveButton.centerYAnchor
-//        .constraint(equalTo: optionsComboBox.centerYAnchor)
     ])
   }
   
@@ -303,8 +372,6 @@ final class PreferencesControlsView: NSView {
         return "Linear Gradient"
       case .circularGradient:
         return "Circular Gradient"
-      default:
-        fatalError("FruitType not implemented")
       }
     })
     return items
