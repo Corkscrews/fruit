@@ -75,10 +75,11 @@ final class PreferencesViewController:
   }()
 
   private lazy var versionLabel: NSTextField = {
-    let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String
+    let bundle = Bundle(for: type(of: self))
+    let version = bundle.infoDictionary?["CFBundleShortVersionString"] as? String
       ?? Bundle.main.infoDictionary?["CFBundleVersion"] as? String
       ?? "Unknown"
-    let copyright = Bundle.main.infoDictionary?["NSHumanReadableCopyright"] as? String ?? ""
+    let copyright = bundle.infoDictionary?["NSHumanReadableCopyright"] as? String ?? ""
     let labelText = "Version: \(version) - Thank you! 😊\n\(copyright)"
     let label = NSTextField(labelWithString: labelText)
     label.alignment = .center

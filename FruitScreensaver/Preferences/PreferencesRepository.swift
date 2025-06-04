@@ -14,7 +14,7 @@ protocol PreferencesRepository {
 class PreferencesRepositoryImpl: PreferencesRepository {
   
   /// The key used to store the default fruit type in UserDefaults.
-  private let fruitTypeKey = "\(Bundle.main.bundleIdentifier!).defaultFruitType"
+  private lazy var fruitTypeKey = "\(Bundle(for: type(of: self)).bundleIdentifier!).defaultFruitType"
   private let randomFruitType = "random"
 
   /// Retrieves the default background fruit type from UserDefaults.
