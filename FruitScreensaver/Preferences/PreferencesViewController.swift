@@ -33,7 +33,7 @@ final class PreferencesViewController:
   private lazy var fruitView: FruitView = {
     let fruitView = FruitView(frame: self.view.bounds, mode: .preferences)
     fruitView.autoresizingMask = [.width, .height]
-    fruitView.update(mode: preferencesRepository!.defaultBackgroundType())
+    fruitView.update(mode: preferencesRepository!.defaultFruitMode())
     return fruitView
   }()
 
@@ -46,7 +46,7 @@ final class PreferencesViewController:
   /// The view containing the controls for the preferences.
   private lazy var controlsView: PreferencesControlsView = {
     let controlsView = PreferencesControlsView(
-      fruitMode: preferencesRepository!.defaultBackgroundType()
+      fruitMode: preferencesRepository!.defaultFruitMode()
     )
     controlsView.translatesAutoresizingMaskIntoConstraints = false
     controlsView.onDoneTapped = { [weak self] in
@@ -69,7 +69,7 @@ final class PreferencesViewController:
       }
       self?.fruitMode = fruitMode
       self?.fruitView.update(mode: fruitMode)
-      self?.preferencesRepository!.selectedFruitType(fruitMode)
+      self?.preferencesRepository!.updateDefaultFruitMode(fruitMode)
     }
     return controlsView
   }()

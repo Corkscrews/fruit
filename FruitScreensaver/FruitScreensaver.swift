@@ -55,7 +55,7 @@ final class FruitScreensaver: ScreenSaverView {
       mode: isPreview ? .preview : .default
     )
     fruitView.autoresizingMask = [.width, .height]
-    fruitView.update(mode: preferencesRepository.defaultBackgroundType())
+    fruitView.update(mode: preferencesRepository.defaultFruitMode())
     self.addSubview(fruitView)
   }
 
