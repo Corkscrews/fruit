@@ -78,7 +78,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Bump Homebrew Cask
-        uses: kitschpatrol/github-action-homebrew-bump-cask@v1
+        uses: kitschpatrol/github-action-homebrew-bump-cask@v3
         with:
           tap: Corkscrews/homebrew-cask
           casK: fruit-screensaver
