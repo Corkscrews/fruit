@@ -1,0 +1,85 @@
+name: 🚀 Release
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  build-and-release:
+    name: 🚀 Build and Release .saver
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: 🛠️ Set up Xcode version
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest
+
+      - name: 💾 Cache DerivedData
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/Library/Developer/Xcode/DerivedData
+          key: ${{ runner.os }}-xcode-deriveddata-${{ hashFiles('**/*.xcodeproj/**', '**/*.xcworkspace/**', 'Podfile.lock', 'Cartfile.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-xcode-deriveddata-
+
+      - name: 🏗️ Build .saver
+        run: ./.github/scripts/build.sh
+
+      - name: 📦 Zip .saver
+        run: |
+          cd build
+          tar -czf Fruit.saver.tar.gz Fruit.saver
+
+      - name: 🔢 Extract build number from xcodeproj
+        id: extract_build_number
+        run: |
+          BUILD_NUMBER=$(./.github/scripts/extract_build_number.sh)
+          echo "build_number=$BUILD_NUMBER" >> $GITHUB_OUTPUT
+
+      - name: 📝 Extract changelog for build_number
+        id: extract_changelog
+        run: |
+          CHANGELOG=$(./.github/scripts/extract_changelog.sh ${{ steps.extract_build_number.outputs.build_number }})
+          echo 'var<<EOF' >> $GITHUB_OUTPUT
+          echo "changelog=$CHANGELOG" >> $GITHUB_OUTPUT
+          echo 'EOF' >> $GITHUB_OUTPUT
+
+      - name: 🏷️ Create Release Tag
+        id: create_tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -f ${{ steps.extract_build_number.outputs.build_number }}
+          git push -f origin ${{ steps.extract_build_number.outputs.build_number }}
+
+      - name: ⬆️ Upload .saver to Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build/Fruit.saver.tar.gz
+          tag_name: ${{ steps.extract_build_number.outputs.build_number }}
+          name: "Release ${{ steps.extract_build_number.outputs.build_number }}"
+          body: ${{ steps.extract_changelog.outputs.changelog }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  bump-homebrew-cask:
+    name: 🍺 Bump Homebrew Cask
+    runs-on: ubuntu-latest
+    needs: build-and-release
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - name: 🍺 Bump Homebrew Cask
+        uses: kitschpatrol/github-action-homebrew-bump-cask@v3
+        with:
+          tap: Corkscrews/homebrew-cask
+          casK: fruit-screensaver
+          tag: ${{ needs.build-and-release.outputs.extract_build_number.outputs.build_number }}
+          token: ${{ secrets.HOMEBREW_TOKEN }} 
