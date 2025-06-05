@@ -81,5 +81,6 @@ jobs:
         uses: kitschpatrol/github-action-homebrew-bump-cask@v1
         with:
           cask-name: fruit-screensaver
+          casK: Corkscrews/homebrew-cask
           download-url: https://github.com/Corkscrews/fruit/releases/download/${{ steps.extract_build_number.outputs.build_number }}/Fruit.saver.tar.gz
           token: ${{ secrets.HOMEBREW_TOKEN }}
