@@ -33,7 +33,7 @@ You can change those under the options from `System Settings` -> `Screen saver` 
 
 ### Install manually
 
-1. [Click here to Download](https://github.com/Corkscrews/fruit/releases/download/1.3.0/Fruit.saver.tar.gz)
+1. [Click here to Download](https://github.com/Corkscrews/fruit/releases/download/1.3.1/Fruit.saver.tar.gz)
 2. Open **Fruit.saver** (double click).
 3. `"Fruit.saver" can't be opened because it is from an unidentified developer` will appear, press `OK`.
 4. Open `Preferences`.

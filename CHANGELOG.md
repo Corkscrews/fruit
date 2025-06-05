@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.1]
+
+### Features
+
+ - Migrated `Solid`, `Linear Gradient` and `Circular Gradient` to MetalKit. Reduced CPU usage from around 60% to around 16%.
+
+
 ## [1.3.0]
 
 ### Features
