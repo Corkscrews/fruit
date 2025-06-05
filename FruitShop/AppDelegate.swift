@@ -13,4 +13,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     window?.makeKeyAndOrderFront(self)
   }
 
+  func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+    return true
+  }
+
+  func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool {
+    return true
+  }
+
 }
