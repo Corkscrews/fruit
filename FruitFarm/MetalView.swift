@@ -5,6 +5,18 @@ public final class MetalView: MTKView, MTKViewDelegate {
   // MARK: - Public Properties
   public var onReady: (() -> Void)?
 
+  /// Controls whether the view should render. When paused, rendering stops to save CPU/GPU.
+  public var isRenderingPaused: Bool = false {
+    didSet {
+      // Control whether drawing occurs
+      if isRenderingPaused {
+        self.enableSetNeedsDisplay = false
+      } else {
+        self.enableSetNeedsDisplay = true
+      }
+    }
+  }
+
   // MARK: - Private Properties
   private let colorSpace = CGColorSpace(name: CGColorSpace.extendedLinearDisplayP3)
   private var contrast: Float // values from 1.0 to 3.0, where 1.0 is optimal
@@ -126,6 +138,9 @@ public final class MetalView: MTKView, MTKViewDelegate {
 
   // MARK: - MTKViewDelegate
   public func draw(in view: MTKView) {
+    // Skip rendering if paused to save CPU/GPU
+    guard !isRenderingPaused else { return }
+
     guard let image = image,
           let colorSpace = colorSpace,
           let commandQueue = commandQueue,

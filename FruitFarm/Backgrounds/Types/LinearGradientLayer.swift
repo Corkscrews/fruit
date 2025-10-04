@@ -155,6 +155,8 @@ final class MetalLinearGradientLayer: CAMetalLayer, Background {
   private var elapsedTime: CGFloat = 0
   // continuousTotalElapsedTimeForRotation is not needed for simple linear gradient
   private let secondsPerColor: CGFloat = 2.0
+  private var lastUpdateTime: CGFloat = 0
+  private let minUpdateInterval: CGFloat = 1.0 / 30.0 // Throttle to 30 FPS max
 
   deinit {
     // Release Metal resources
@@ -321,11 +323,22 @@ final class MetalLinearGradientLayer: CAMetalLayer, Background {
 
   func update(deltaTime: CGFloat) {
     elapsedTime += deltaTime
+    lastUpdateTime += deltaTime
+
+    var needsRedraw = false
+
     while elapsedTime >= secondsPerColor {
       elapsedTime -= secondsPerColor
       colorIndex = (colorIndex + 1) % colorArray.count
+      needsRedraw = true
     }
-    setNeedsDisplay() // Triggers display()
+
+    // Throttle display updates to reduce CPU usage
+    // Only redraw if enough time has passed OR color changed
+    if needsRedraw || lastUpdateTime >= minUpdateInterval {
+      lastUpdateTime = 0
+      setNeedsDisplay() // Triggers display()
+    }
   }
 
   // MARK: - Drawing
