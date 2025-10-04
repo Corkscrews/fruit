@@ -84,7 +84,7 @@ final class RainbowsLayer: CALayer, Background {
   /// Update the animation state for all bars.
   func update(deltaTime: CGFloat) {
     lastUpdateTime += deltaTime
-    
+
     for index in 0..<totalLines {
       let currentOffset = currentLineOffsets[index]
       let diff = Self.barSpeed * deltaTime
@@ -92,7 +92,7 @@ final class RainbowsLayer: CALayer, Background {
       let newOffset = currentOffset + diff
       currentLineOffsets[index] = newOffset > maxOffset ? 0 : newOffset
     }
-    
+
     // Throttle display updates to reduce CPU usage
     if lastUpdateTime >= minUpdateInterval {
       lastUpdateTime = 0

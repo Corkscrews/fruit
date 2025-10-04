@@ -141,7 +141,7 @@ final class FruitScreensaver: ScreenSaverView {
     // Pause all animations to reduce CPU during shutdown
     isPaused = true
     metalView?.isRenderingPaused = true
-    
+
     if !isPreview {
       NSApplication.shared.terminate(nil)
     }

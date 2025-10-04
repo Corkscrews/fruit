@@ -175,7 +175,7 @@ final class PreferencesViewController:
   /// preventing multiple callbacks on multi-monitor setups.
   private func setupDisplayLink() {
     var link: CVDisplayLink?
-    
+
     // Create display link for the specific display where the window is located
     // This prevents the multi-monitor bug where callbacks fire for all displays
     if let screen = view.window?.screen {
@@ -185,7 +185,7 @@ final class PreferencesViewController:
       // Fallback to main display if window/screen not available yet
       CVDisplayLinkCreateWithCGDisplay(CGMainDisplayID(), &link)
     }
-    
+
     guard let displayLink = link else { return }
     self.displayLink = displayLink
 

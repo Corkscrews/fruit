@@ -376,15 +376,15 @@ final class MetalCircularGradientLayer: CAMetalLayer, Background {
     continuousTotalElapsedTimeForRotation += deltaTime
     elapsedTime += deltaTime
     lastUpdateTime += deltaTime
-    
+
     var needsRedraw = false
-    
+
     while elapsedTime >= secondsPerColor {
       elapsedTime -= secondsPerColor
       colorIndex = (colorIndex + 1) % colorArray.count
       needsRedraw = true
     }
-    
+
     // Throttle display updates to reduce CPU usage
     // Only redraw if enough time has passed OR color changed
     if needsRedraw || lastUpdateTime >= minUpdateInterval {

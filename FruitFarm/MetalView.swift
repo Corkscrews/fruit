@@ -4,7 +4,7 @@ import MetalKit
 public final class MetalView: MTKView, MTKViewDelegate {
   // MARK: - Public Properties
   public var onReady: (() -> Void)?
-  
+
   /// Controls whether the view should render. When paused, rendering stops to save CPU/GPU.
   public var isRenderingPaused: Bool = false {
     didSet {
@@ -140,7 +140,7 @@ public final class MetalView: MTKView, MTKViewDelegate {
   public func draw(in view: MTKView) {
     // Skip rendering if paused to save CPU/GPU
     guard !isRenderingPaused else { return }
-    
+
     guard let image = image,
           let colorSpace = colorSpace,
           let commandQueue = commandQueue,
