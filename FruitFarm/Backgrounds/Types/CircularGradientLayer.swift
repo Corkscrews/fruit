@@ -161,6 +161,8 @@ final class MetalCircularGradientLayer: CAMetalLayer, Background {
   private var continuousTotalElapsedTimeForRotation: CGFloat = 0
   private var currentFruitMaxDimension: CGFloat = 50.0
   private let secondsPerColor: CGFloat = 2.0 // Duration for each color transition
+  private var lastUpdateTime: CGFloat = 0
+  private let minUpdateInterval: CGFloat = 1.0 / 30.0 // Throttle to 30 FPS max
 
   deinit {
     // Release Metal resources
@@ -373,11 +375,22 @@ final class MetalCircularGradientLayer: CAMetalLayer, Background {
   func update(deltaTime: CGFloat) {
     continuousTotalElapsedTimeForRotation += deltaTime
     elapsedTime += deltaTime
+    lastUpdateTime += deltaTime
+    
+    var needsRedraw = false
+    
     while elapsedTime >= secondsPerColor {
       elapsedTime -= secondsPerColor
       colorIndex = (colorIndex + 1) % colorArray.count
+      needsRedraw = true
     }
-    setNeedsDisplay() // Triggers display()
+    
+    // Throttle display updates to reduce CPU usage
+    // Only redraw if enough time has passed OR color changed
+    if needsRedraw || lastUpdateTime >= minUpdateInterval {
+      lastUpdateTime = 0
+      setNeedsDisplay() // Triggers display()
+    }
   }
 
   // MARK: - Drawing

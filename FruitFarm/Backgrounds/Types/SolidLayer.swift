@@ -62,6 +62,8 @@ final class MetalSolidLayer: CAMetalLayer, Background {
   private var colorIndex: Int = 0
   private var elapsedTime: CGFloat = 0
   private let secondsPerColor: CGFloat = 10.0 // Matching SolidLayer's duration
+  private var lastUpdateTime: CGFloat = 0
+  private let minUpdateInterval: CGFloat = 1.0 / 30.0 // Throttle to 30 FPS max
 
   deinit {
     // Release Metal resources
@@ -191,11 +193,22 @@ final class MetalSolidLayer: CAMetalLayer, Background {
 
   func update(deltaTime: CGFloat) {
     elapsedTime += deltaTime
+    lastUpdateTime += deltaTime
+    
+    var needsRedraw = false
+    
     if elapsedTime >= secondsPerColor {
       elapsedTime = 0 // Reset after exceeding duration
       colorIndex = (colorIndex + 1) % MetalSolidLayer.colorArray.count
+      needsRedraw = true
     }
-    setNeedsDisplay() // Triggers display()
+    
+    // Throttle display updates to reduce CPU usage
+    // Only redraw if enough time has passed OR color changed
+    if needsRedraw || lastUpdateTime >= minUpdateInterval {
+      lastUpdateTime = 0
+      setNeedsDisplay() // Triggers display()
+    }
   }
 
   // MARK: - Drawing

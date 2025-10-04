@@ -23,6 +23,8 @@ final class RainbowsLayer: CALayer, Background {
   private var colorsForPath: [NSColor] = []
   private var currentLineOffsets: [CGFloat] = []
   private var heightOfBars: CGFloat = 0
+  private var lastUpdateTime: CGFloat = 0
+  private let minUpdateInterval: CGFloat = 1.0 / 30.0 // Throttle to 30 FPS max
 
   private var totalLines: Int {
     Self.visibleLinesCount * Self.totalLinesMultiplier
@@ -81,6 +83,8 @@ final class RainbowsLayer: CALayer, Background {
 
   /// Update the animation state for all bars.
   func update(deltaTime: CGFloat) {
+    lastUpdateTime += deltaTime
+    
     for index in 0..<totalLines {
       let currentOffset = currentLineOffsets[index]
       let diff = Self.barSpeed * deltaTime
@@ -88,7 +92,12 @@ final class RainbowsLayer: CALayer, Background {
       let newOffset = currentOffset + diff
       currentLineOffsets[index] = newOffset > maxOffset ? 0 : newOffset
     }
-    setNeedsDisplay()
+    
+    // Throttle display updates to reduce CPU usage
+    if lastUpdateTime >= minUpdateInterval {
+      lastUpdateTime = 0
+      setNeedsDisplay()
+    }
   }
 
   // MARK: - Drawing
