@@ -9,6 +9,8 @@ jobs:
   build-and-release:
     name: 🚀 Build and Release .saver
     runs-on: macos-14
+    outputs:
+      build_number: ${{ steps.extract_build_number.outputs.build_number }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -80,6 +82,6 @@ jobs:
         uses: kitschpatrol/github-action-homebrew-bump-cask@v3
         with:
           tap: Corkscrews/homebrew-cask
-          casK: fruit-screensaver
-          tag: ${{ needs.build-and-release.outputs.extract_build_number.outputs.build_number }}
+          cask: fruit-screensaver
+          tag: ${{ needs.build-and-release.outputs.build_number }}
           token: ${{ secrets.HOMEBREW_TOKEN }} 
