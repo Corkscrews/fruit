@@ -31,10 +31,10 @@ final class RainbowsLayer: CALayer, Background {
   }
 
   // MARK: - Init
-  init(frame: NSRect, fruit: Fruit) {
+  init(frame: NSRect, fruit: Fruit, contentsScale: CGFloat) {
     super.init()
     self.frame = frame
-    self.contentsScale = NSScreen.main?.backingScaleFactor ?? 2.0
+    self.contentsScale = contentsScale
     config(fruit: fruit)
   }
 
@@ -44,7 +44,10 @@ final class RainbowsLayer: CALayer, Background {
 
   override init(layer: Any) {
     super.init(layer: layer)
-    self.contentsScale = NSScreen.main?.backingScaleFactor ?? 2.0
+    // Inherit contentsScale from the layer being copied
+    if let otherLayer = layer as? CALayer {
+      self.contentsScale = otherLayer.contentsScale
+    }
   }
 
   func update(frame: NSRect, fruit: Fruit) {

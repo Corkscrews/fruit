@@ -8,12 +8,10 @@ public final class MetalView: MTKView, MTKViewDelegate {
   /// Controls whether the view should render. When paused, rendering stops to save CPU/GPU.
   public var isRenderingPaused: Bool = false {
     didSet {
-      // Control whether drawing occurs
-      if isRenderingPaused {
-        self.enableSetNeedsDisplay = false
-      } else {
-        self.enableSetNeedsDisplay = true
-      }
+      // Use MTKView's built-in isPaused to completely stop the render loop timer.
+      // This is critical - just setting enableSetNeedsDisplay doesn't stop the internal
+      // timer that calls draw(in:) at preferredFramesPerSecond rate.
+      self.isPaused = isRenderingPaused
     }
   }
 
@@ -166,10 +164,25 @@ public final class MetalView: MTKView, MTKViewDelegate {
 
   // MARK: - Helpers
   private static var defaultFrameRate: Int {
+    // Note: This gets the main screen's frame rate as a default.
+    // The actual frame rate should be set based on the screen where
+    // the view is displayed, but at init time we may not have that info.
     if #available(macOS 12.0, *) {
       return NSScreen.main?.maximumFramesPerSecond ?? 120
     } else {
       return 120
+    }
+  }
+
+  /// Updates rendering properties when view moves to different display
+  public override func viewDidChangeBackingProperties() {
+    super.viewDidChangeBackingProperties()
+
+    // Update frame rate if on a different display
+    if #available(macOS 12.0, *) {
+      if let screen = window?.screen {
+        preferredFramesPerSecond = screen.maximumFramesPerSecond
+      }
     }
   }
 }

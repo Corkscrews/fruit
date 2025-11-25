@@ -40,6 +40,7 @@ public final class FruitView: NSView {
   public init(frame frameRect: NSRect, mode: FruitViewMode) {
     self.mode = mode
     super.init(frame: frameRect)
+    self.wantsLayer = true  // Enable layer-backed view
     setupFruitAndLeafObjects()
   }
 
@@ -51,6 +52,7 @@ public final class FruitView: NSView {
   required init?(coder: NSCoder) {
     self.mode = FruitViewMode.default
     super.init(coder: coder)
+    self.wantsLayer = true  // Enable layer-backed view
     setupFruitAndLeafObjects()
   }
 
@@ -184,15 +186,26 @@ public final class FruitView: NSView {
   }
 
   private func buildFruitBackground(_ fruitType: FruitType) -> (CALayer & Background)? {
+    // Get the backing scale factor from the actual screen this view is on
+    let scale = window?.screen?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2.0
+
+    #if DEBUG
+    let screenName = window?.screen?.localizedName ?? "unknown"
+    print("🎨 FruitView: Creating \(fruitType) layer with scale \(scale) for screen: \(screenName)")
+    if window == nil {
+      print("⚠️ FruitView: Window is nil, using fallback scale")
+    }
+    #endif
+
     switch fruitType {
     case .rainbow:
-      return RainbowsLayer(frame: self.frame, fruit: fruit)
+      return RainbowsLayer(frame: self.frame, fruit: fruit, contentsScale: scale)
     case .solid:
-      return MetalSolidLayer(frame: self.frame, fruit: fruit)
+      return MetalSolidLayer(frame: self.frame, fruit: fruit, contentsScale: scale)
     case .linearGradient:
-      return MetalLinearGradientLayer(frame: self.frame, fruit: fruit)
+      return MetalLinearGradientLayer(frame: self.frame, fruit: fruit, contentsScale: scale)
     case .circularGradient:
-      return MetalCircularGradientLayer(frame: self.frame, fruit: fruit)
+      return MetalCircularGradientLayer(frame: self.frame, fruit: fruit, contentsScale: scale)
     }
   }
 
@@ -232,6 +245,26 @@ public final class FruitView: NSView {
     return deltaTime
   }
 
+  // MARK: - Window & Display Changes
+
+  /// Called when the view is added to or removed from a window.
+  /// Recreates layers if they were created before the window was set.
+  public override func viewDidMoveToWindow() {
+    super.viewDidMoveToWindow()
+
+    // If we have layers but they might have been created with wrong scale
+    // (before window was set), recreate them now with the correct scale
+    if window != nil && fruitBackground != nil {
+      let currentScale = fruitBackground?.contentsScale ?? 0
+      let correctScale = window?.screen?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2.0
+
+      // If scales don't match, recreate layers
+      if abs(currentScale - correctScale) > 0.01 {
+        recreateLayersForNewScale()
+      }
+    }
+  }
+
   // MARK: - Resizing
   /// Handles view resizing. Updates all layers and geometry on size change.
   public override func layout() {
@@ -239,5 +272,48 @@ public final class FruitView: NSView {
     backgroundLayer?.update(frame: self.frame, fruit: self.fruit)
     fruitBackground?.update(frame: self.frame, fruit: self.fruit)
     setNeedsDisplay(bounds)
+  }
+
+  /// Called when the view's backing properties change, such as moving to a display
+  /// with different scale factor. Updates layer contentsScale to match new display.
+  public override func viewDidChangeBackingProperties() {
+    super.viewDidChangeBackingProperties()
+    // For Metal layers, we need to recreate them with the new scale
+    // Just changing contentsScale isn't sufficient
+    recreateLayersForNewScale()
+  }
+
+  /// Recreates all layers with the correct scale for the current display.
+  /// This is necessary because Metal layers don't properly respond to just
+  /// changing contentsScale - they need to be recreated.
+  private func recreateLayersForNewScale() {
+    #if DEBUG
+    let oldScale = fruitBackground?.contentsScale ?? 0
+    let newScale = window?.screen?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2.0
+    let screenName = window?.screen?.localizedName ?? "unknown"
+    print("🔄 FruitView: Recreating layers - scale change \(oldScale) → \(newScale) on \(screenName)")
+    #endif
+
+    // Remove existing layers
+    fruitBackground?.removeFromSuperlayer()
+    fruitBackground = nil
+    backgroundLayer = nil
+
+    // Force redraw which will recreate layers with correct scale
+    setNeedsDisplay(bounds)
+  }
+
+  /// Updates the contentsScale of all layers to match the current display
+  private func updateLayerScales() {
+    let scale = window?.screen?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2.0
+    backgroundLayer?.contentsScale = scale
+    fruitBackground?.contentsScale = scale
+
+    // Update mask layers as well
+    if let maskLayer = backgroundLayer?.mask {
+      maskLayer.contentsScale = scale
+      // Update sublayers of mask (leaf layer)
+      maskLayer.sublayers?.forEach { $0.contentsScale = scale }
+    }
   }
 }

@@ -175,12 +175,12 @@ final class MetalCircularGradientLayer: CAMetalLayer, Background {
   }
 
   // MARK: - Initialization
-  init(frame: CGRect, fruit: Fruit) { // Frame is CGRect for CALayer
+  init(frame: CGRect, fruit: Fruit, contentsScale: CGFloat) { // Frame is CGRect for CALayer
     self.currentFruitMaxDimension = fruit.maxDimen()
     super.init()
 
     self.frame = frame
-    self.contentsScale = NSScreen.main?.backingScaleFactor ?? 2.0
+    self.contentsScale = contentsScale
     self.pixelFormat = .bgra8Unorm
     self.isOpaque = true // Assuming it's a background
     self.framebufferOnly = true // Performance optimization
