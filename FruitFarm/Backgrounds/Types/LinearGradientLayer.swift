@@ -169,12 +169,12 @@ final class MetalLinearGradientLayer: CAMetalLayer, Background {
   }
 
   // MARK: - Initialization
-  init(frame: CGRect, fruit: Fruit) { // Frame is CGRect for CALayer
+  init(frame: CGRect, fruit: Fruit, contentsScale: CGFloat) { // Frame is CGRect for CALayer
     // currentFruitMaxDimension is not used for linear gradient
     super.init()
 
     self.frame = frame
-    self.contentsScale = NSScreen.main?.backingScaleFactor ?? 2.0
+    self.contentsScale = contentsScale
     self.pixelFormat = .bgra8Unorm
     self.isOpaque = true
     self.framebufferOnly = true

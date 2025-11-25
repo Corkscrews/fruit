@@ -74,11 +74,11 @@ final class MetalSolidLayer: CAMetalLayer, Background {
   }
 
   // MARK: - Initialization
-  init(frame: CGRect, fruit: Fruit) { // Frame is CGRect for CALayer
+  init(frame: CGRect, fruit: Fruit, contentsScale: CGFloat) { // Frame is CGRect for CALayer
     super.init()
 
     self.frame = frame
-    self.contentsScale = NSScreen.main?.backingScaleFactor ?? 2.0
+    self.contentsScale = contentsScale
     self.pixelFormat = .bgra8Unorm
     self.isOpaque = true
     self.framebufferOnly = true // Typically true for layers that don't need to be read back
