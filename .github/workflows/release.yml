@@ -79,9 +79,10 @@ jobs:
         with:
           fetch-depth: 1
       - name: 🍺 Bump Homebrew Cask
-        uses: kitschpatrol/github-action-homebrew-bump-cask@v3
+        uses: kitschpatrol/github-action-homebrew-bump-cask@v3.8.6
         with:
           tap: Corkscrews/homebrew-cask
           cask: fruit-screensaver
           tag: ${{ needs.build-and-release.outputs.build_number }}
-          token: ${{ secrets.HOMEBREW_TOKEN }} 
+          token: ${{ secrets.HOMEBREW_TOKEN }}
+          no-fork: true 
