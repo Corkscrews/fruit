@@ -188,7 +188,7 @@ public final class FruitView: NSView {
   private func buildFruitBackground(_ fruitType: FruitType) -> (CALayer & Background)? {
     // Get the backing scale factor from the actual screen this view is on
     let scale = window?.screen?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2.0
-    
+
     #if DEBUG
     let screenName = window?.screen?.localizedName ?? "unknown"
     print("🎨 FruitView: Creating \(fruitType) layer with scale \(scale) for screen: \(screenName)")
@@ -196,7 +196,7 @@ public final class FruitView: NSView {
       print("⚠️ FruitView: Window is nil, using fallback scale")
     }
     #endif
-    
+
     switch fruitType {
     case .rainbow:
       return RainbowsLayer(frame: self.frame, fruit: fruit, contentsScale: scale)
@@ -246,25 +246,25 @@ public final class FruitView: NSView {
   }
 
   // MARK: - Window & Display Changes
-  
+
   /// Called when the view is added to or removed from a window.
   /// Recreates layers if they were created before the window was set.
   public override func viewDidMoveToWindow() {
     super.viewDidMoveToWindow()
-    
+
     // If we have layers but they might have been created with wrong scale
     // (before window was set), recreate them now with the correct scale
     if window != nil && fruitBackground != nil {
       let currentScale = fruitBackground?.contentsScale ?? 0
       let correctScale = window?.screen?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2.0
-      
+
       // If scales don't match, recreate layers
       if abs(currentScale - correctScale) > 0.01 {
         recreateLayersForNewScale()
       }
     }
   }
-  
+
   // MARK: - Resizing
   /// Handles view resizing. Updates all layers and geometry on size change.
   public override func layout() {
@@ -293,12 +293,12 @@ public final class FruitView: NSView {
     let screenName = window?.screen?.localizedName ?? "unknown"
     print("🔄 FruitView: Recreating layers - scale change \(oldScale) → \(newScale) on \(screenName)")
     #endif
-    
+
     // Remove existing layers
     fruitBackground?.removeFromSuperlayer()
     fruitBackground = nil
     backgroundLayer = nil
-    
+
     // Force redraw which will recreate layers with correct scale
     setNeedsDisplay(bounds)
   }
@@ -308,7 +308,7 @@ public final class FruitView: NSView {
     let scale = window?.screen?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2.0
     backgroundLayer?.contentsScale = scale
     fruitBackground?.contentsScale = scale
-    
+
     // Update mask layers as well
     if let maskLayer = backgroundLayer?.mask {
       maskLayer.contentsScale = scale

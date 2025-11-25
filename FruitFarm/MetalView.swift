@@ -173,11 +173,11 @@ public final class MetalView: MTKView, MTKViewDelegate {
       return 120
     }
   }
-  
+
   /// Updates rendering properties when view moves to different display
   public override func viewDidChangeBackingProperties() {
     super.viewDidChangeBackingProperties()
-    
+
     // Update frame rate if on a different display
     if #available(macOS 12.0, *) {
       if let screen = window?.screen {
