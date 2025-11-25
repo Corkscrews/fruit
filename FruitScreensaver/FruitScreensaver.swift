@@ -19,6 +19,7 @@ final class FruitScreensaver: ScreenSaverView {
 
   private var lastFrameTime: TimeInterval?
   private var lastFps: Int = 60
+  private var isPaused: Bool = false
 
   // MARK: Preferences
 
@@ -26,6 +27,12 @@ final class FruitScreensaver: ScreenSaverView {
   private lazy var preferencesWindowController = createPreferencesWindow(
     preferencesRepository: self.preferencesRepository
   )
+
+  deinit {
+    // Remove notification observers to prevent memory leaks
+    NotificationCenter.default.removeObserver(self)
+    DistributedNotificationCenter.default.removeObserver(self)
+  }
 
   override init?(frame: NSRect, isPreview: Bool) {
     super.init(frame: frame, isPreview: isPreview)
@@ -86,8 +93,23 @@ final class FruitScreensaver: ScreenSaverView {
     metalView?.frame = self.bounds
   }
 
+  override func viewDidMoveToWindow() {
+    super.viewDidMoveToWindow()
+    // Pause animations when view is removed from window hierarchy
+    if window == nil {
+      isPaused = true
+      metalView?.isRenderingPaused = true
+    } else {
+      // Resume animations when added to window
+      isPaused = false
+      metalView?.isRenderingPaused = false
+    }
+  }
+
   override func animateOneFrame() {
     super.animateOneFrame()
+    // Skip animation if paused to save CPU
+    guard !isPaused else { return }
     fruitView.animateOneFrame(framesPerSecond: calculateFps())
   }
 
@@ -116,6 +138,10 @@ final class FruitScreensaver: ScreenSaverView {
 
   @objc
   private func willStop(_ aNotification: Notification) {
+    // Pause all animations to reduce CPU during shutdown
+    isPaused = true
+    metalView?.isRenderingPaused = true
+
     if !isPreview {
       NSApplication.shared.terminate(nil)
     }
@@ -123,12 +149,16 @@ final class FruitScreensaver: ScreenSaverView {
 
   private func addScreenDidChangeNotification() {
     checkEDR()
-    NotificationCenter.default.addObserver(
-      self,
-      selector: #selector(checkEDR),
-      name: NSWindow.didChangeScreenNotification,
-      object: window
-    )
+    // Only observe screen changes for this specific window
+    // Passing nil would observe ALL windows, causing excessive callbacks
+    if let window = window {
+      NotificationCenter.default.addObserver(
+        self,
+        selector: #selector(checkEDR),
+        name: NSWindow.didChangeScreenNotification,
+        object: window
+      )
+    }
   }
 
   @objc

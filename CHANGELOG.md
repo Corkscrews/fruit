@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.3.2]
+
+### Bug Fixes
+
+ - Fixed critical issue where CPU usage would spike to 100% even when the screensaver was not in use. The `MetalView` was using `enableSetNeedsDisplay` instead of `isPaused` to control the render loop, which only prevented manual draw requests but did not stop the internal CVDisplayLink timer running at up to 120 FPS.
+
 ## [1.3.1]
 
 ### Features

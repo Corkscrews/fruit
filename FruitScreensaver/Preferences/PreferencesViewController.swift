@@ -171,9 +171,21 @@ final class PreferencesViewController:
 
   /// Sets up the display link for smooth animation.
   /// Synchronizes the animation with the screen's refresh rate.
+  /// Creates a display link for the specific display where the window is shown,
+  /// preventing multiple callbacks on multi-monitor setups.
   private func setupDisplayLink() {
     var link: CVDisplayLink?
-    CVDisplayLinkCreateWithActiveCGDisplays(&link)
+
+    // Create display link for the specific display where the window is located
+    // This prevents the multi-monitor bug where callbacks fire for all displays
+    if let screen = view.window?.screen {
+      let displayID = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID ?? CGMainDisplayID()
+      CVDisplayLinkCreateWithCGDisplay(displayID, &link)
+    } else {
+      // Fallback to main display if window/screen not available yet
+      CVDisplayLinkCreateWithCGDisplay(CGMainDisplayID(), &link)
+    }
+
     guard let displayLink = link else { return }
     self.displayLink = displayLink
 
@@ -202,12 +214,16 @@ final class PreferencesViewController:
 
   private func addScreenDidChangeNotification() {
     checkEDR()
-    NotificationCenter.default.addObserver(
-      self,
-      selector: #selector(checkEDR),
-      name: NSWindow.didChangeScreenNotification,
-      object: view.window
-    )
+    // Only observe screen changes for this specific window
+    // Passing nil would observe ALL windows, causing excessive callbacks
+    if let window = view.window {
+      NotificationCenter.default.addObserver(
+        self,
+        selector: #selector(checkEDR),
+        name: NSWindow.didChangeScreenNotification,
+        object: window
+      )
+    }
   }
 
   @objc

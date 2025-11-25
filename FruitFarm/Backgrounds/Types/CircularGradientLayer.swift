@@ -161,6 +161,8 @@ final class MetalCircularGradientLayer: CAMetalLayer, Background {
   private var continuousTotalElapsedTimeForRotation: CGFloat = 0
   private var currentFruitMaxDimension: CGFloat = 50.0
   private let secondsPerColor: CGFloat = 2.0 // Duration for each color transition
+  private var lastUpdateTime: CGFloat = 0
+  private let minUpdateInterval: CGFloat = 1.0 / 30.0 // Throttle to 30 FPS max
 
   deinit {
     // Release Metal resources
@@ -173,12 +175,12 @@ final class MetalCircularGradientLayer: CAMetalLayer, Background {
   }
 
   // MARK: - Initialization
-  init(frame: CGRect, fruit: Fruit) { // Frame is CGRect for CALayer
+  init(frame: CGRect, fruit: Fruit, contentsScale: CGFloat) { // Frame is CGRect for CALayer
     self.currentFruitMaxDimension = fruit.maxDimen()
     super.init()
 
     self.frame = frame
-    self.contentsScale = NSScreen.main?.backingScaleFactor ?? 2.0
+    self.contentsScale = contentsScale
     self.pixelFormat = .bgra8Unorm
     self.isOpaque = true // Assuming it's a background
     self.framebufferOnly = true // Performance optimization
@@ -373,11 +375,22 @@ final class MetalCircularGradientLayer: CAMetalLayer, Background {
   func update(deltaTime: CGFloat) {
     continuousTotalElapsedTimeForRotation += deltaTime
     elapsedTime += deltaTime
+    lastUpdateTime += deltaTime
+
+    var needsRedraw = false
+
     while elapsedTime >= secondsPerColor {
       elapsedTime -= secondsPerColor
       colorIndex = (colorIndex + 1) % colorArray.count
+      needsRedraw = true
     }
-    setNeedsDisplay() // Triggers display()
+
+    // Throttle display updates to reduce CPU usage
+    // Only redraw if enough time has passed OR color changed
+    if needsRedraw || lastUpdateTime >= minUpdateInterval {
+      lastUpdateTime = 0
+      setNeedsDisplay() // Triggers display()
+    }
   }
 
   // MARK: - Drawing
