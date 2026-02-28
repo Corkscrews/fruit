@@ -20,6 +20,14 @@ final class FruitScreensaver: ScreenSaverView {
   private var lastFrameTime: TimeInterval?
   private var lastFps: Int = 60
   private var isPaused: Bool = false
+  private var lameDuck: Bool = false
+
+  // MARK: Preview detection
+
+  // FB7486243: On Sonoma, legacyScreenSaver.appex always passes true for
+  // isPreview. On Tahoe it is inverted. We detect the real state from the
+  // frame size — the preview thumbnail is always small (~296x184).
+  private let actualIsPreview: Bool
 
   // MARK: Preferences
 
@@ -29,16 +37,21 @@ final class FruitScreensaver: ScreenSaverView {
   )
 
   deinit {
-    // Remove notification observers to prevent memory leaks
     NotificationCenter.default.removeObserver(self)
     DistributedNotificationCenter.default.removeObserver(self)
   }
 
+  private static let newInstanceNotification = Notification.Name(
+    "com.corkscrews.fruit.NewInstance"
+  )
+
   override init?(frame: NSRect, isPreview: Bool) {
-    super.init(frame: frame, isPreview: isPreview)
+    actualIsPreview = frame.width <= 400 || frame.height <= 300
+    super.init(frame: frame, isPreview: actualIsPreview)
     animationTimeInterval = Constant.secondPerFrame
-    setupFruitView(isPreview: isPreview)
-    if !isPreview {
+    addNewInstanceObserver()
+    setupFruitView()
+    if !actualIsPreview {
       setupMetalView()
       addScreenDidChangeNotification()
     }
@@ -46,20 +59,49 @@ final class FruitScreensaver: ScreenSaverView {
   }
 
   required init?(coder decoder: NSCoder) {
+    actualIsPreview = false
     super.init(coder: decoder)
     animationTimeInterval = Constant.secondPerFrame
-    setupFruitView(isPreview: false)
-    if !isPreview {
+    addNewInstanceObserver()
+    setupFruitView()
+    if !actualIsPreview {
       setupMetalView()
       addScreenDidChangeNotification()
     }
     addObserverWillStopNotification()
   }
 
-  private func setupFruitView(isPreview: Bool) {
+  // FB19204084: legacyScreenSaver.appex creates new ScreenSaverView instances
+  // on every activation without destroying old ones. Each new instance
+  // notifies older ones to stop animating and release resources.
+  private func addNewInstanceObserver() {
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(neuterOldInstance(_:)),
+      name: Self.newInstanceNotification,
+      object: nil
+    )
+    NotificationCenter.default.post(
+      name: Self.newInstanceNotification,
+      object: self
+    )
+  }
+
+  @objc
+  private func neuterOldInstance(_ notification: Notification) {
+    guard notification.object as? FruitScreensaver !== self else { return }
+    lameDuck = true
+    isPaused = true
+    metalView?.isRenderingPaused = true
+    removeFromSuperview()
+    NotificationCenter.default.removeObserver(self)
+    DistributedNotificationCenter.default.removeObserver(self)
+  }
+
+  private func setupFruitView() {
     fruitView = FruitView(
       frame: self.bounds,
-      mode: isPreview ? .preview : .default
+      mode: actualIsPreview ? .preview : .default
     )
     fruitView.autoresizingMask = [.width, .height]
     fruitView.update(mode: preferencesRepository.defaultFruitMode())
@@ -93,14 +135,33 @@ final class FruitScreensaver: ScreenSaverView {
     metalView?.frame = self.bounds
   }
 
+  override func startAnimation() {
+    super.startAnimation()
+    guard !lameDuck else { return }
+
+    // Flush the ScreenSaverDefaults cache so we pick up preference
+    // changes made in System Settings while the process was alive.
+    preferencesRepository.reload()
+    fruitView.update(mode: preferencesRepository.defaultFruitMode())
+
+    isPaused = false
+    metalView?.isRenderingPaused = false
+  }
+
+  // Only called for the System Settings live preview (broken in Sonoma
+  // for normal operation), but still worth handling.
+  override func stopAnimation() {
+    isPaused = true
+    metalView?.isRenderingPaused = true
+    super.stopAnimation()
+  }
+
   override func viewDidMoveToWindow() {
     super.viewDidMoveToWindow()
-    // Pause animations when view is removed from window hierarchy
     if window == nil {
       isPaused = true
       metalView?.isRenderingPaused = true
     } else {
-      // Resume animations when added to window
       isPaused = false
       metalView?.isRenderingPaused = false
     }
@@ -108,8 +169,7 @@ final class FruitScreensaver: ScreenSaverView {
 
   override func animateOneFrame() {
     super.animateOneFrame()
-    // Skip animation if paused to save CPU
-    guard !isPaused else { return }
+    guard !isPaused, !lameDuck else { return }
     fruitView.animateOneFrame(framesPerSecond: calculateFps())
   }
 
@@ -138,12 +198,16 @@ final class FruitScreensaver: ScreenSaverView {
 
   @objc
   private func willStop(_ aNotification: Notification) {
-    // Pause all animations to reduce CPU during shutdown
     isPaused = true
     metalView?.isRenderingPaused = true
 
-    if !isPreview {
-      NSApplication.shared.terminate(nil)
+    // Delay exit to avoid a race condition with rapid lock/unlock cycles
+    // that can leave a black screen. Using exit(0) instead of terminate(_:)
+    // to skip AppKit delegate callbacks inside legacyScreenSaver.appex.
+    if !actualIsPreview {
+      DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+        exit(0)
+      }
     }
   }
 

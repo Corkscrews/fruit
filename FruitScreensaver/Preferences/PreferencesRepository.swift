@@ -9,6 +9,9 @@ protocol PreferencesRepository {
   func defaultFruitMode() -> FruitMode
   /// Updates the user's default background fruit type.
   func updateDefaultFruitMode(_ mode: FruitMode)
+  /// Flushes the in-memory defaults cache so the next read picks up
+  /// changes written by another process (e.g. System Settings).
+  func reload()
 }
 
 /// Concrete implementation of PreferencesRepository using ScreenSaverDefaults 
@@ -60,8 +63,10 @@ class PreferencesRepositoryImpl: PreferencesRepository {
         forKey: Keys.fruitTypeKey.rawValue
       )
     }
-    // Synchronize ScreenSaverDefaults to ensure the value
-    // is saved immediately.
+    screensaverDefaults.synchronize()
+  }
+
+  func reload() {
     screensaverDefaults.synchronize()
   }
 }

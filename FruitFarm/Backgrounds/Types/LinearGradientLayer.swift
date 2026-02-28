@@ -141,14 +141,14 @@ final class MetalLinearGradientLayer: CAMetalLayer, Background {
       Float($0) / Float(colorArray.count - 1)
     }
   }()
-  private var gradientLocationsBuffer: MTLBuffer!
+  private var gradientLocationsBuffer: MTLBuffer?
 
   // MARK: - Metal Objects
-  private var metalDevice: MTLDevice!
-  private var commandQueue: MTLCommandQueue!
-  private var pipelineState: MTLRenderPipelineState!
-  private var vertexBuffer: MTLBuffer!
-  private var currentInterpolatedColorsBuffer: MTLBuffer!
+  private var metalDevice: MTLDevice?
+  private var commandQueue: MTLCommandQueue?
+  private var pipelineState: MTLRenderPipelineState?
+  private var vertexBuffer: MTLBuffer?
+  private var currentInterpolatedColorsBuffer: MTLBuffer?
 
   // MARK: - Animation Properties
   private var colorIndex: Int = 0
@@ -185,7 +185,7 @@ final class MetalLinearGradientLayer: CAMetalLayer, Background {
     createColorLocationBuffer()
 
     let initialColors = calculateCurrentInterpolatedColors()
-    currentInterpolatedColorsBuffer = metalDevice.makeBuffer(
+    currentInterpolatedColorsBuffer = metalDevice?.makeBuffer(
       bytes: initialColors,
       length: MemoryLayout<SIMD4<Float>>.stride * colorArray.count,
       options: .storageModeShared
@@ -249,19 +249,16 @@ final class MetalLinearGradientLayer: CAMetalLayer, Background {
   }
 
   private func setupMetal() {
-    guard let device = MTLCreateSystemDefaultDevice() else {
-      fatalError("Metal is not supported on this device for MetalLinearGradientLayer")
-    }
+    guard let device = MTLCreateSystemDefaultDevice() else { return }
     self.metalDevice = device
-    self.device = device // Assign to CAMetalLayer's device property
+    self.device = device
 
-    guard let commandQueue = device.makeCommandQueue() else {
-      fatalError("Could not create Metal command queue for MetalLinearGradientLayer")
-    }
+    guard let commandQueue = device.makeCommandQueue() else { return }
     self.commandQueue = commandQueue
   }
 
   private func setupPipeline() {
+    guard let metalDevice = metalDevice else { return }
     do {
       let library = try metalDevice.makeLibrary(
         source: metalLinearGradientShaderSource, options: nil
@@ -271,7 +268,7 @@ final class MetalLinearGradientLayer: CAMetalLayer, Background {
       ), let fragmentFunction = library.makeFunction(
         name: "fragment_shader_linear_gradient"
       ) else {
-        fatalError("Could not find shader functions for MetalLinearGradientLayer")
+        return
       }
 
       let pipelineDescriptor = MTLRenderPipelineDescriptor()
@@ -283,10 +280,7 @@ final class MetalLinearGradientLayer: CAMetalLayer, Background {
         descriptor: pipelineDescriptor
       )
     } catch {
-      fatalError(
-        "Could not create Metal render pipeline state for " +
-        "MetalLinearGradientLayer: \(error)"
-      )
+      return
     }
   }
 
@@ -295,7 +289,7 @@ final class MetalLinearGradientLayer: CAMetalLayer, Background {
       SIMD2<Float>(-1.0, -1.0), SIMD2<Float>( 1.0, -1.0), SIMD2<Float>(-1.0, 1.0),
       SIMD2<Float>( 1.0, -1.0), SIMD2<Float>( 1.0, 1.0), SIMD2<Float>(-1.0, 1.0)
     ]
-    vertexBuffer = metalDevice.makeBuffer(
+    vertexBuffer = metalDevice?.makeBuffer(
       bytes: vertices,
       length: MemoryLayout<SIMD2<Float>>.stride * vertices.count,
       options: .storageModeShared
@@ -303,7 +297,7 @@ final class MetalLinearGradientLayer: CAMetalLayer, Background {
   }
 
   private func createColorLocationBuffer() {
-    gradientLocationsBuffer = metalDevice.makeBuffer(
+    gradientLocationsBuffer = metalDevice?.makeBuffer(
       bytes: gradientLocations,
       length: MemoryLayout<Float>.stride * gradientLocations.count,
       options: .storageModeShared
@@ -343,23 +337,29 @@ final class MetalLinearGradientLayer: CAMetalLayer, Background {
 
   // MARK: - Drawing
   override func display() {
-    guard let drawable = nextDrawable() else { return }
+    guard let pipelineState = pipelineState,
+          let commandQueue = commandQueue,
+          let vertexBuffer = vertexBuffer,
+          let gradientLocationsBuffer = gradientLocationsBuffer,
+          let drawable = nextDrawable() else { return }
     let texture = drawable.texture
 
     let currentColors = calculateCurrentInterpolatedColors()
     let bufferSize = MemoryLayout<SIMD4<Float>>.stride * currentColors.count
-    if currentInterpolatedColorsBuffer.length != bufferSize {
-      currentInterpolatedColorsBuffer = metalDevice.makeBuffer(
+    if let existing = currentInterpolatedColorsBuffer, existing.length == bufferSize {
+      existing.contents().copyMemory(
+        from: currentColors,
+        byteCount: MemoryLayout<SIMD4<Float>>.stride * currentColors.count
+      )
+    } else {
+      currentInterpolatedColorsBuffer = metalDevice?.makeBuffer(
         bytes: currentColors,
         length: bufferSize,
         options: .storageModeShared
       )
-    } else {
-      currentInterpolatedColorsBuffer.contents().copyMemory(
-        from: currentColors,
-        byteCount: MemoryLayout<SIMD4<Float>>.stride * currentColors.count
-      )
     }
+
+    guard let colorsBuffer = currentInterpolatedColorsBuffer else { return }
 
     var uniforms = MetalLinearGradientFragmentUniforms(
       resolution: SIMD2<Float>(Float(texture.width), Float(texture.height)),
@@ -391,7 +391,7 @@ final class MetalLinearGradientLayer: CAMetalLayer, Background {
       length: MemoryLayout<MetalLinearGradientFragmentUniforms>.stride,
       index: 0
     )
-    renderEncoder.setFragmentBuffer(currentInterpolatedColorsBuffer, offset: 0, index: 1)
+    renderEncoder.setFragmentBuffer(colorsBuffer, offset: 0, index: 1)
     renderEncoder.setFragmentBuffer(gradientLocationsBuffer, offset: 0, index: 2)
 
     renderEncoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6)
