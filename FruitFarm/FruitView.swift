@@ -212,6 +212,8 @@ public final class FruitView: NSView {
       return LiquidLayer(frame: self.frame, fruit: fruit, contentsScale: scale)
     case .puppy:
       return PuppyLayer(frame: self.frame, fruit: fruit, contentsScale: scale)
+    case .warp:
+      return WarpLayer(frame: self.frame, fruit: fruit, contentsScale: scale)
     }
   }
 
