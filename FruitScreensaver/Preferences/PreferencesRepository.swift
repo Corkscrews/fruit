@@ -18,9 +18,13 @@ protocol PreferencesRepository {
 /// for persistence.
 class PreferencesRepositoryImpl: PreferencesRepository {
 
-  private lazy var screensaverDefaults = ScreenSaverDefaults(
-    forModuleWithName: Bundle(for: type(of: self)).bundleIdentifier!
-  )!
+  private lazy var screensaverDefaults: ScreenSaverDefaults = {
+    guard let bundleId = Bundle(for: type(of: self)).bundleIdentifier,
+          let defaults = ScreenSaverDefaults(forModuleWithName: bundleId) else {
+      fatalError("Failed to create ScreenSaverDefaults — missing CFBundleIdentifier in Info.plist")
+    }
+    return defaults
+  }()
 
   /// The key used to store the default fruit type in ScreenSaverDefaults.
   enum Keys: String {

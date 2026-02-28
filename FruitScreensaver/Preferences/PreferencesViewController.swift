@@ -21,10 +21,9 @@ func createPreferencesWindow(preferencesRepository: PreferencesRepository) -> NS
 final class PreferencesViewController:
   NSViewController, NSTableViewDataSource, NSTableViewDelegate {
 
-  // Store reference to the window
   weak var window: NSWindow?
 
-  var preferencesRepository: PreferencesRepository?
+  let preferencesRepository: PreferencesRepository
 
   private var fruitMode: FruitMode?
 
@@ -33,7 +32,7 @@ final class PreferencesViewController:
   private lazy var fruitView: FruitView = {
     let fruitView = FruitView(frame: self.view.bounds, mode: .preferences)
     fruitView.autoresizingMask = [.width, .height]
-    fruitView.update(mode: preferencesRepository!.defaultFruitMode())
+    fruitView.update(mode: preferencesRepository.defaultFruitMode())
     return fruitView
   }()
 
@@ -46,7 +45,7 @@ final class PreferencesViewController:
   /// The view containing the controls for the preferences.
   private lazy var controlsView: PreferencesControlsView = {
     let controlsView = PreferencesControlsView(
-      fruitMode: preferencesRepository!.defaultFruitMode()
+      fruitMode: preferencesRepository.defaultFruitMode()
     )
     controlsView.translatesAutoresizingMaskIntoConstraints = false
     controlsView.onDoneTapped = { [weak self] in
@@ -69,7 +68,7 @@ final class PreferencesViewController:
       }
       self?.fruitMode = fruitMode
       self?.fruitView.update(mode: fruitMode)
-      self?.preferencesRepository!.updateDefaultFruitMode(fruitMode)
+      self?.preferencesRepository.updateDefaultFruitMode(fruitMode)
     }
     return controlsView
   }()
@@ -95,12 +94,7 @@ final class PreferencesViewController:
   private var displayLink: CVDisplayLink?
 
   deinit {
-    if let displayLink = displayLink {
-      CVDisplayLinkStop(displayLink)
-    }
-    preferencesRepository = nil
-    window = nil
-    // Remove notification observer
+    stopDisplayLink()
     NotificationCenter.default.removeObserver(self)
   }
 
@@ -169,43 +163,54 @@ final class PreferencesViewController:
 
   // MARK: - Display Link
 
-  /// Sets up the display link for smooth animation.
-  /// Synchronizes the animation with the screen's refresh rate.
-  /// Creates a display link for the specific display where the window is shown,
-  /// preventing multiple callbacks on multi-monitor setups.
-  private func setupDisplayLink() {
-    var link: CVDisplayLink?
+  private final class DisplayLinkContext {
+    weak var controller: PreferencesViewController?
+    init(_ controller: PreferencesViewController) { self.controller = controller }
+  }
 
-    // Create display link for the specific display where the window is located
-    // This prevents the multi-monitor bug where callbacks fire for all displays
+  private var displayLinkContext: DisplayLinkContext?
+
+  private func stopDisplayLink() {
+    if let displayLink = displayLink {
+      CVDisplayLinkStop(displayLink)
+    }
+    displayLink = nil
+    displayLinkContext = nil
+  }
+
+  private func setupDisplayLink() {
+    stopDisplayLink()
+
+    var link: CVDisplayLink?
     if let screen = view.window?.screen {
-      let displayID = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID ?? CGMainDisplayID()
+      let displayID = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")]
+        as? CGDirectDisplayID ?? CGMainDisplayID()
       CVDisplayLinkCreateWithCGDisplay(displayID, &link)
     } else {
-      // Fallback to main display if window/screen not available yet
       CVDisplayLinkCreateWithCGDisplay(CGMainDisplayID(), &link)
     }
 
     guard let displayLink = link else { return }
     self.displayLink = displayLink
 
+    let context = DisplayLinkContext(self)
+    self.displayLinkContext = context
+
     CVDisplayLinkSetOutputCallback(
       displayLink, { (_, inNow, _, _, _, userInfo) -> CVReturn in
-      let controller = Unmanaged<PreferencesViewController>
+      let ctx = Unmanaged<DisplayLinkContext>
         .fromOpaque(userInfo!).takeUnretainedValue()
-      // Get the display's refresh rate (frames per second)
-      // CVTimeStamp does not have a 'timeScale' property; use 'videoTimeScale' instead
+      guard let controller = ctx.controller else { return kCVReturnSuccess }
+
       let timeScale = Int64(inNow.pointee.videoTimeScale)
       let frameDuration = inNow.pointee.videoRefreshPeriod
-      // Calculate FPS
       let fps: Int = frameDuration > 0 ? Int(timeScale / frameDuration) : 60
 
-      DispatchQueue.main.async {
-        controller.fruitView.needsDisplay = true
-        controller.fruitView.animateOneFrame(framesPerSecond: fps)
+      DispatchQueue.main.async { [weak controller] in
+        controller?.fruitView.animateOneFrame(framesPerSecond: fps)
       }
       return kCVReturnSuccess
-    }, UnsafeMutableRawPointer(Unmanaged.passUnretained(self).toOpaque()))
+    }, Unmanaged.passUnretained(context).toOpaque())
 
     CVDisplayLinkStart(displayLink)
   }
@@ -214,16 +219,20 @@ final class PreferencesViewController:
 
   private func addScreenDidChangeNotification() {
     checkEDR()
-    // Only observe screen changes for this specific window
-    // Passing nil would observe ALL windows, causing excessive callbacks
     if let window = view.window {
       NotificationCenter.default.addObserver(
         self,
-        selector: #selector(checkEDR),
+        selector: #selector(screenDidChange),
         name: NSWindow.didChangeScreenNotification,
         object: window
       )
     }
+  }
+
+  @objc
+  private func screenDidChange() {
+    checkEDR()
+    setupDisplayLink()
   }
 
   @objc

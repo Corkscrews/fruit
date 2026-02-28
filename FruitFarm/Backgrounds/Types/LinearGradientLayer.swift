@@ -197,55 +197,32 @@ final class MetalLinearGradientLayer: CAMetalLayer, Background {
   }
 
   override init(layer: Any) {
-    super.init(layer: layer) // CALayer properties are copied. self.device (CAMetalLayer.device) is nil.
+    super.init(layer: layer)
+    guard let other = layer as? MetalLinearGradientLayer else { return }
 
-//    if let other = layer as? MetalLinearGradientLayer {
-//      // 1. Establish the MTLDevice for this new layer.
-//      let deviceToUseForNewLayer: MTLDevice
-//      if let sourceStrongDeviceRef = other.metalDevice {
-//        deviceToUseForNewLayer = sourceStrongDeviceRef
-//      } else {
-//        print("Warning: Source layer ('other') did not have metalDevice. Creating new MTLDevice for copied MetalLinearGradientLayer.")
-//        guard let newDevice = MTLCreateSystemDefaultDevice() else {
-//          fatalError("Metal is not supported on this device. Cannot create MTLDevice for copied layer.")
-//        }
-//        deviceToUseForNewLayer = newDevice
-//      }
-//
-//      self.metalDevice = deviceToUseForNewLayer // Our strong reference
-//      self.device = deviceToUseForNewLayer      // CAMetalLayer's weak reference
-//
-//      // 2. Copy CAMetalLayer specific properties (safe now that device is set)
-//      self.pixelFormat = other.pixelFormat
-//      self.framebufferOnly = other.framebufferOnly
-//      self.isOpaque = other.isOpaque
-//
-//      // 3. Copy custom application-specific state
-//      self.colorIndex = other.colorIndex
-//      self.elapsedTime = other.elapsedTime
-//      // secondsPerColor is a constant, no need to copy if it's always the same
-//
-//      // 4. Re-create Metal resources using self.metalDevice
-//      guard let currentDeviceForResources = self.metalDevice else {
-//        fatalError("self.metalDevice is unexpectedly nil before re-creating Metal resources in init(layer:Any) for MetalLinearGradientLayer.")
-//      }
-//      guard let cq = currentDeviceForResources.makeCommandQueue() else {
-//        fatalError("Could not create Metal command queue for copied MetalLinearGradientLayer.")
-//      }
-//      self.commandQueue = cq
-//      setupPipeline() // Uses self.metalDevice and self.pixelFormat
-//      createVertexBuffers() // Uses self.metalDevice
-//      createColorLocationBuffer() // Uses self.metalDevice
-//
-//      let currentColors = calculateCurrentInterpolatedColors()
-//      if let colorBuffer = currentDeviceForResources.makeBuffer(bytes: currentColors, length: MemoryLayout<SIMD4<Float>>.stride * colorArray.count, options: .storageModeShared) {
-//        self.currentInterpolatedColorsBuffer = colorBuffer
-//      } else {
-//        fatalError("Failed to create currentInterpolatedColorsBuffer for copied MetalLinearGradientLayer.")
-//      }
-//    } else {
-//      print("Warning: init(layer: Any) called for MetalLinearGradientLayer with a layer that is not MetalLinearGradientLayer.")
-//    }
+    let device = other.metalDevice ?? MTLCreateSystemDefaultDevice()
+    guard let device = device else { return }
+    self.metalDevice = device
+    self.device = device
+
+    self.pixelFormat = other.pixelFormat
+    self.framebufferOnly = other.framebufferOnly
+    self.isOpaque = other.isOpaque
+
+    self.colorIndex = other.colorIndex
+    self.elapsedTime = other.elapsedTime
+
+    self.commandQueue = device.makeCommandQueue()
+    setupPipeline()
+    createVertexBuffers()
+    createColorLocationBuffer()
+
+    let currentColors = calculateCurrentInterpolatedColors()
+    currentInterpolatedColorsBuffer = device.makeBuffer(
+      bytes: currentColors,
+      length: MemoryLayout<SIMD4<Float>>.stride * colorArray.count,
+      options: .storageModeShared
+    )
   }
 
   private func setupMetal() {
