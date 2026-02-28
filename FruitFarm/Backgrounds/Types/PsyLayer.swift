@@ -198,15 +198,9 @@ final class PsyLayer: CAMetalLayer, Background {
     super.init(layer: layer)
     guard let other = layer as? PsyLayer else { return }
 
-    let device = other.metalDevice ?? MTLCreateSystemDefaultDevice()
-    guard let device = device else { return }
-    self.metalDevice = device
-    self.device = device
-
-    self.pixelFormat = other.pixelFormat != .invalid ? other.pixelFormat : .bgra8Unorm
-    self.framebufferOnly = other.framebufferOnly
-    self.isOpaque = other.isOpaque
-
+    // Only copy plain Swift stored properties. Do NOT access any CAMetalLayer
+    // properties (device, pixelFormat, etc.) — this runs inside
+    // CA::Layer::presentation_copy where Metal state is not valid yet.
     self.totalElapsedTime = other.totalElapsedTime
     self.colorPhase = other.colorPhase
     self.currentSpeed = other.currentSpeed
@@ -215,10 +209,6 @@ final class PsyLayer: CAMetalLayer, Background {
     self.speedTimer = other.speedTimer
     self.phaseDuration = other.phaseDuration
     self.isFastPhase = other.isFastPhase
-
-    self.commandQueue = device.makeCommandQueue()
-    setupPipeline()
-    createVertexBuffers()
   }
 
   private func setupMetal() {
@@ -264,7 +254,7 @@ final class PsyLayer: CAMetalLayer, Background {
 
   // MARK: - Background Protocol
   func update(frame: NSRect, fruit: Fruit) {
-    self.frame = frame
+    setFrameAndDrawableSizeWithoutAnimation(frame)
     setNeedsDisplay()
   }
 

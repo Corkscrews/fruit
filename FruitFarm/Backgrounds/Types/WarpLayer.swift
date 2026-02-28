@@ -27,6 +27,7 @@ struct WarpUniforms {
     float2 resolution;
     float time;
     float speed;
+    float referenceSize;
 };
 
 float warp_hash(float2 p) {
@@ -40,9 +41,13 @@ fragment float4 fragment_shader_warp(
     constant WarpUniforms &uniforms [[buffer(0)]]) {
 
     float2 uv = (in.position.xy - uniforms.resolution * 0.5) /
-                 min(uniforms.resolution.x, uniforms.resolution.y);
-    uv.y -= 0.039;
-    uv.x += 0.005;
+                 uniforms.referenceSize;
+
+    float fruitScale = min(
+        min(uniforms.resolution.x, uniforms.resolution.y) / uniforms.referenceSize,
+        2.0);
+    uv.y -= fruitScale * 0.04;
+    uv.x += fruitScale * 0.005;
 
     float t = uniforms.time;
     float spd = uniforms.speed;
@@ -146,6 +151,7 @@ private struct MetalWarpFragmentUniforms {
   var resolution: SIMD2<Float>
   var time: Float
   var speed: Float
+  var referenceSize: Float
 }
 
 // swiftlint:disable:next type_body_length
@@ -254,7 +260,7 @@ final class WarpLayer: CAMetalLayer, Background {
 
   // MARK: - Background Protocol
   func update(frame: NSRect, fruit: Fruit) {
-    setFrameWithoutAnimation(frame)
+    setFrameAndDrawableSizeWithoutAnimation(frame)
     setNeedsDisplay()
   }
 
@@ -309,7 +315,8 @@ final class WarpLayer: CAMetalLayer, Background {
     var uniforms = MetalWarpFragmentUniforms(
       resolution: SIMD2<Float>(Float(texture.width), Float(texture.height)),
       time: Float(totalElapsedTime),
-      speed: Float(currentSpeed)
+      speed: Float(currentSpeed),
+      referenceSize: 300.0 * Float(contentsScale)
     )
 
     let renderPassDescriptor = MTLRenderPassDescriptor()

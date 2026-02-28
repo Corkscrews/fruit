@@ -200,30 +200,8 @@ final class MetalLinearGradientLayer: CAMetalLayer, Background {
   override init(layer: Any) {
     super.init(layer: layer)
     guard let other = layer as? MetalLinearGradientLayer else { return }
-
-    let device = other.metalDevice ?? MTLCreateSystemDefaultDevice()
-    guard let device = device else { return }
-    self.metalDevice = device
-    self.device = device
-
-    self.pixelFormat = other.pixelFormat
-    self.framebufferOnly = other.framebufferOnly
-    self.isOpaque = other.isOpaque
-
     self.colorIndex = other.colorIndex
     self.elapsedTime = other.elapsedTime
-
-    self.commandQueue = device.makeCommandQueue()
-    setupPipeline()
-    createVertexBuffers()
-    createColorLocationBuffer()
-
-    let currentColors = calculateCurrentInterpolatedColors()
-    currentInterpolatedColorsBuffer = device.makeBuffer(
-      bytes: currentColors,
-      length: MemoryLayout<SIMD4<Float>>.stride * colorArray.count,
-      options: .storageModeShared
-    )
   }
 
   private func setupMetal() {
@@ -284,7 +262,7 @@ final class MetalLinearGradientLayer: CAMetalLayer, Background {
 
   // MARK: - Background Protocol
   func update(frame: NSRect, fruit: Fruit) {
-    self.frame = frame
+    setFrameAndDrawableSizeWithoutAnimation(frame)
     setNeedsDisplay()
   }
 

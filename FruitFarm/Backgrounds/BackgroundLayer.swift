@@ -27,7 +27,7 @@ final class BackgroundLayer: CAShapeLayer, Background {
   func update(deltaTime: CGFloat) { }
 
   func update(frame: NSRect, fruit: Fruit) {
-    self.frame = frame
+    setFrameWithoutAnimation(frame)
     updateBezierPath()
   }
 

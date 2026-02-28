@@ -175,22 +175,8 @@ final class LiquidLayer: CAMetalLayer, Background {
   override init(layer: Any) {
     super.init(layer: layer)
     guard let other = layer as? LiquidLayer else { return }
-
-    let device = other.metalDevice ?? MTLCreateSystemDefaultDevice()
-    guard let device = device else { return }
-    self.metalDevice = device
-    self.device = device
-
-    self.pixelFormat = other.pixelFormat != .invalid ? other.pixelFormat : .bgra8Unorm
-    self.framebufferOnly = other.framebufferOnly
-    self.isOpaque = other.isOpaque
-
     self.totalElapsedTime = other.totalElapsedTime
     self.colorPhase = other.colorPhase
-
-    self.commandQueue = device.makeCommandQueue()
-    setupPipeline()
-    createVertexBuffers()
   }
 
   private func setupMetal() {
@@ -236,7 +222,7 @@ final class LiquidLayer: CAMetalLayer, Background {
 
   // MARK: - Background Protocol
   func update(frame: NSRect, fruit: Fruit) {
-    self.frame = frame
+    setFrameAndDrawableSizeWithoutAnimation(frame)
     setNeedsDisplay()
   }
 

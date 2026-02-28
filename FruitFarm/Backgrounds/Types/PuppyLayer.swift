@@ -43,13 +43,18 @@ float puppy_fruit_sdf(float2 p) {
     float ax = 1.45;
     float2 q = float2(p.x * ax, p.y);
 
-    // Body: two large circles, tight smooth union for clean silhouette
+    // Body: two large circles for the main mass
     float dl = length(q - float2(-0.20, -0.04)) - 0.50;
     float dr = length(q - float2( 0.20, -0.04)) - 0.50;
     float d = puppy_smin(dl, dr, 0.08);
 
-    // Top notch between shoulders
-    float notch = length(q - float2(0.0, 0.50)) - 0.16;
+    // Upper shoulder peaks so the top has two distinct bumps
+    float sl = length(q - float2(-0.24, 0.22)) - 0.28;
+    float sr = length(q - float2( 0.24, 0.22)) - 0.28;
+    d = puppy_smin(d, min(sl, sr), 0.03);
+
+    // Top notch carved between the shoulders
+    float notch = length(q - float2(0.0, 0.54)) - 0.18;
     d = max(d, -notch);
 
     // Bottom cleft
@@ -188,21 +193,7 @@ final class PuppyLayer: CAMetalLayer, Background {
   override init(layer: Any) {
     super.init(layer: layer)
     guard let other = layer as? PuppyLayer else { return }
-
-    let device = other.metalDevice ?? MTLCreateSystemDefaultDevice()
-    guard let device = device else { return }
-    self.metalDevice = device
-    self.device = device
-
-    self.pixelFormat = other.pixelFormat != .invalid ? other.pixelFormat : .bgra8Unorm
-    self.framebufferOnly = other.framebufferOnly
-    self.isOpaque = other.isOpaque
-
     self.totalElapsedTime = other.totalElapsedTime
-
-    self.commandQueue = device.makeCommandQueue()
-    setupPipeline()
-    createVertexBuffers()
   }
 
   private func setupMetal() {
@@ -248,7 +239,7 @@ final class PuppyLayer: CAMetalLayer, Background {
 
   // MARK: - Background Protocol
   func update(frame: NSRect, fruit: Fruit) {
-    self.frame = frame
+    setFrameAndDrawableSizeWithoutAnimation(frame)
     setNeedsDisplay()
   }
 

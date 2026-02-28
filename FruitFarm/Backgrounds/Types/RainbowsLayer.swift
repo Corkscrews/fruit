@@ -51,7 +51,7 @@ final class RainbowsLayer: CALayer, Background {
   }
 
   func update(frame: NSRect, fruit: Fruit) {
-    self.frame = frame
+    setFrameWithoutAnimation(frame)
     config(fruit: fruit)
   }
 
