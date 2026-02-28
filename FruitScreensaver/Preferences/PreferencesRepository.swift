@@ -9,15 +9,22 @@ protocol PreferencesRepository {
   func defaultFruitMode() -> FruitMode
   /// Updates the user's default background fruit type.
   func updateDefaultFruitMode(_ mode: FruitMode)
+  /// Flushes the in-memory defaults cache so the next read picks up
+  /// changes written by another process (e.g. System Settings).
+  func reload()
 }
 
 /// Concrete implementation of PreferencesRepository using ScreenSaverDefaults 
 /// for persistence.
 class PreferencesRepositoryImpl: PreferencesRepository {
 
-  private lazy var screensaverDefaults = ScreenSaverDefaults(
-    forModuleWithName: Bundle(for: type(of: self)).bundleIdentifier!
-  )!
+  private lazy var screensaverDefaults: ScreenSaverDefaults = {
+    guard let bundleId = Bundle(for: type(of: self)).bundleIdentifier,
+          let defaults = ScreenSaverDefaults(forModuleWithName: bundleId) else {
+      fatalError("Failed to create ScreenSaverDefaults — missing CFBundleIdentifier in Info.plist")
+    }
+    return defaults
+  }()
 
   /// The key used to store the default fruit type in ScreenSaverDefaults.
   enum Keys: String {
@@ -60,8 +67,10 @@ class PreferencesRepositoryImpl: PreferencesRepository {
         forKey: Keys.fruitTypeKey.rawValue
       )
     }
-    // Synchronize ScreenSaverDefaults to ensure the value
-    // is saved immediately.
+    screensaverDefaults.synchronize()
+  }
+
+  func reload() {
     screensaverDefaults.synchronize()
   }
 }

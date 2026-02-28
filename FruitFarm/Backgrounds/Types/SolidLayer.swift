@@ -52,10 +52,10 @@ final class MetalSolidLayer: CAMetalLayer, Background {
   ]
 
   // MARK: - Metal Objects
-  private var metalDevice: MTLDevice!
-  private var commandQueue: MTLCommandQueue!
-  private var pipelineState: MTLRenderPipelineState!
-  private var vertexBuffer: MTLBuffer!
+  private var metalDevice: MTLDevice?
+  private var commandQueue: MTLCommandQueue?
+  private var pipelineState: MTLRenderPipelineState?
+  private var vertexBuffer: MTLBuffer?
   // No need for color array buffers like in gradient layers, just a uniform.
 
   // MARK: - Animation Properties (from SolidLayer)
@@ -93,68 +93,42 @@ final class MetalSolidLayer: CAMetalLayer, Background {
   }
 
   override init(layer: Any) {
-    super.init(layer: layer) // CALayer properties are copied. self.device (CAMetalLayer.device) is nil.
+    super.init(layer: layer)
+    guard let other = layer as? MetalSolidLayer else { return }
 
-//    if let other = layer as? MetalSolidLayer {
-//      // 1. Establish the MTLDevice for this new layer.
-//      let deviceToUseForNewLayer: MTLDevice
-//      if let sourceStrongDeviceRef = other.metalDevice {
-//        deviceToUseForNewLayer = sourceStrongDeviceRef
-//      } else {
-//        print("Warning: Source layer ('other') did not have metalDevice. Creating new MTLDevice for copied MetalSolidLayer.")
-//        guard let newDevice = MTLCreateSystemDefaultDevice() else {
-//          fatalError("Metal is not supported on this device. Cannot create MTLDevice for copied layer.")
-//        }
-//        deviceToUseForNewLayer = newDevice
-//      }
-//
-//      self.metalDevice = deviceToUseForNewLayer // Our strong reference
-//      self.device = deviceToUseForNewLayer      // CAMetalLayer's weak reference
-//
-//      // 2. Copy CAMetalLayer specific properties
-//      self.pixelFormat = other.pixelFormat
-//      self.framebufferOnly = other.framebufferOnly
-//      self.isOpaque = other.isOpaque
-//
-//      // 3. Copy custom application-specific state
-//      self.colorIndex = other.colorIndex
-//      self.elapsedTime = other.elapsedTime
-//      // secondsPerColor is a let constant
-//
-//      // 4. Re-create Metal resources using self.metalDevice
-//      guard let currentDeviceForResources = self.metalDevice else {
-//        fatalError("self.metalDevice is unexpectedly nil before re-creating Metal resources in init(layer:Any) for MetalSolidLayer.")
-//      }
-//      guard let cq = currentDeviceForResources.makeCommandQueue() else {
-//        fatalError("Could not create Metal command queue for copied MetalSolidLayer.")
-//      }
-//      self.commandQueue = cq
-//      setupPipeline() // Uses self.metalDevice and self.pixelFormat
-//      createVertexBuffers() // Uses self.metalDevice
-//    } else {
-//      print("Warning: init(layer: Any) called for MetalSolidLayer with a layer that is not MetalSolidLayer.")
-//    }
+    let device = other.metalDevice ?? MTLCreateSystemDefaultDevice()
+    guard let device = device else { return }
+    self.metalDevice = device
+    self.device = device
+
+    self.pixelFormat = other.pixelFormat
+    self.framebufferOnly = other.framebufferOnly
+    self.isOpaque = other.isOpaque
+
+    self.colorIndex = other.colorIndex
+    self.elapsedTime = other.elapsedTime
+
+    self.commandQueue = device.makeCommandQueue()
+    setupPipeline()
+    createVertexBuffers()
   }
 
   private func setupMetal() {
-    guard let device = MTLCreateSystemDefaultDevice() else {
-      fatalError("Metal is not supported on this device for MetalSolidLayer")
-    }
+    guard let device = MTLCreateSystemDefaultDevice() else { return }
     self.metalDevice = device
-    self.device = device // Assign to CAMetalLayer's device property
+    self.device = device
 
-    guard let commandQueue = device.makeCommandQueue() else {
-      fatalError("Could not create Metal command queue for MetalSolidLayer")
-    }
+    guard let commandQueue = device.makeCommandQueue() else { return }
     self.commandQueue = commandQueue
   }
 
   private func setupPipeline() {
+    guard let metalDevice = metalDevice else { return }
     do {
       let library = try metalDevice.makeLibrary(source: metalSolidColorShaderSource, options: nil)
       guard let vertexFunction = library.makeFunction(name: "vertex_shader_solid_color"),
             let fragmentFunction = library.makeFunction(name: "fragment_shader_solid_color") else {
-        fatalError("Could not find shader functions for MetalSolidLayer")
+        return
       }
 
       let pipelineDescriptor = MTLRenderPipelineDescriptor()
@@ -164,7 +138,7 @@ final class MetalSolidLayer: CAMetalLayer, Background {
 
       pipelineState = try metalDevice.makeRenderPipelineState(descriptor: pipelineDescriptor)
     } catch {
-      fatalError("Could not create Metal render pipeline state for MetalSolidLayer: \(error)")
+      return
     }
   }
 
@@ -173,7 +147,7 @@ final class MetalSolidLayer: CAMetalLayer, Background {
       SIMD2<Float>(-1.0, -1.0), SIMD2<Float>( 1.0, -1.0), SIMD2<Float>(-1.0, 1.0),
       SIMD2<Float>( 1.0, -1.0), SIMD2<Float>( 1.0, 1.0), SIMD2<Float>(-1.0, 1.0)
     ]
-    vertexBuffer = metalDevice.makeBuffer(
+    vertexBuffer = metalDevice?.makeBuffer(
       bytes: vertices,
       length: MemoryLayout<SIMD2<Float>>.stride * vertices.count,
       options: .storageModeShared
@@ -197,8 +171,8 @@ final class MetalSolidLayer: CAMetalLayer, Background {
 
     var needsRedraw = false
 
-    if elapsedTime >= secondsPerColor {
-      elapsedTime = 0 // Reset after exceeding duration
+    while elapsedTime >= secondsPerColor {
+      elapsedTime -= secondsPerColor
       colorIndex = (colorIndex + 1) % MetalSolidLayer.colorArray.count
       needsRedraw = true
     }
@@ -213,7 +187,10 @@ final class MetalSolidLayer: CAMetalLayer, Background {
 
   // MARK: - Drawing
   override func display() {
-    guard let drawable = nextDrawable() else { return }
+    guard let pipelineState = pipelineState,
+          let commandQueue = commandQueue,
+          let vertexBuffer = vertexBuffer,
+          let drawable = nextDrawable() else { return }
     let texture = drawable.texture
 
     let currentColor = interpolatedMetalColor()
@@ -222,8 +199,6 @@ final class MetalSolidLayer: CAMetalLayer, Background {
     let renderPassDescriptor = MTLRenderPassDescriptor()
     renderPassDescriptor.colorAttachments[0].texture = texture
     renderPassDescriptor.colorAttachments[0].loadAction = .clear
-    // The clear color is effectively the background if the shader doesn't cover all pixels,
-    // but for a solid fill, it will be overwritten. Can be any opaque color.
     renderPassDescriptor.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
 
     guard let commandBuffer = commandQueue.makeCommandBuffer(),
