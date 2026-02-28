@@ -57,11 +57,13 @@ fragment float4 fragment_shader_warp(
     // always visible, brighter at warp
     float bright = mix(1.0, 1.3, smoothstep(0.5, 2.0, spd));
 
+    float scroll = mix(0.02, 0.5, smoothstep(0.1, 10.0, spd));
+
     float3 col = float3(0.0);
 
     for (int i = 0; i < 20; i++) {
         float fi = float(i);
-        float z = fract(fi / 20.0 + t * 0.25);
+        float z = fract(fi / 20.0 + t * scroll);
         float scale = mix(18.0, 0.8, z);
         float fade = smoothstep(0.0, 0.1, z) * smoothstep(1.0, 0.8, z);
 
@@ -134,8 +136,7 @@ fragment float4 fragment_shader_warp(
 
     float dist = length(uv);
 
-    // Central glow — only appears near peak warp (70%+ of max ~7.0)
-    float gf2 = smoothstep(4.5, 6.5, spd) * 0.5;
+    float gf2 = smoothstep(7.0, 12.0, spd) * 0.5;
     col += float3(0.15, 0.2, 0.45) * exp(-dist * 5.0) * gf2;
     col += float3(0.3, 0.4, 0.65) * exp(-dist * 14.0) * gf2 * 0.5;
     col += float3(0.6, 0.65, 0.8) * exp(-dist * 30.0) * gf2 * 0.3;
@@ -169,11 +170,11 @@ final class WarpLayer: CAMetalLayer, Background {
   private let minUpdateInterval: CGFloat = 1.0 / 30.0
 
   // MARK: - Speed Variation
-  private var currentSpeed: CGFloat = 0.3
-  private var startSpeed: CGFloat = 0.3
-  private var targetSpeed: CGFloat = 5.0
+  private var currentSpeed: CGFloat = 0.1
+  private var startSpeed: CGFloat = 0.1
+  private var targetSpeed: CGFloat = 10.0
   private var speedTimer: CGFloat = 0
-  private var phaseDuration: CGFloat = 2.0
+  private var phaseDuration: CGFloat = 15.0
   private var isWarpPhase: Bool = true
 
   deinit {
@@ -268,13 +269,21 @@ final class WarpLayer: CAMetalLayer, Background {
     setNeedsDisplay()
   }
 
-  private func easeInOut(_ t: CGFloat) -> CGFloat {
-    let p: CGFloat = 4.0
-    if t < 0.5 {
-      return 0.5 * pow(2.0 * t, p)
+  private func easeWarpEngage(_ t: CGFloat) -> CGFloat {
+    let s: CGFloat = 3.0
+    let t2 = t * 2.0
+    if t2 < 1.0 {
+      return 0.5 * (t2 * t2 * ((s + 1.0) * t2 - s))
     } else {
-      return 1.0 - 0.5 * pow(2.0 * (1.0 - t), p)
+      let p = t2 - 2.0
+      return 0.5 * (p * p * ((s + 1.0) * p + s) + 2.0)
     }
+  }
+
+  private func easeWarpDisengage(_ t: CGFloat) -> CGFloat {
+    let s: CGFloat = 2.5
+    let p = t - 1.0
+    return p * p * ((s + 1.0) * p + s) + 1.0
   }
 
   func update(deltaTime: CGFloat) {
@@ -284,16 +293,17 @@ final class WarpLayer: CAMetalLayer, Background {
       startSpeed = currentSpeed
       isWarpPhase.toggle()
       if isWarpPhase {
-        targetSpeed = CGFloat.random(in: 4.0...7.0)
-        phaseDuration = CGFloat.random(in: 10.0...25.0)
+        targetSpeed = CGFloat.random(in: 8.0...14.0)
+        phaseDuration = CGFloat.random(in: 15.0...30.0)
       } else {
-        targetSpeed = CGFloat.random(in: 0.4...0.7)
+        targetSpeed = CGFloat.random(in: 0.05...0.15)
         phaseDuration = CGFloat.random(in: 3.0...5.0)
       }
     }
 
     let progress = min(speedTimer / phaseDuration, 1.0)
-    currentSpeed = startSpeed + (targetSpeed - startSpeed) * easeInOut(progress)
+    let eased = isWarpPhase ? easeWarpEngage(progress) : easeWarpDisengage(progress)
+    currentSpeed = max(0, startSpeed + (targetSpeed - startSpeed) * eased)
 
     totalElapsedTime += deltaTime
     lastUpdateTime += deltaTime
