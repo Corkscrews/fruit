@@ -395,6 +395,8 @@ final class PreferencesControlsView: NSView {
         return "Psychedelic"
       case .liquid:
         return "Liquid"
+      case .puppy:
+        return "Puppy"
       }
     })
     return items

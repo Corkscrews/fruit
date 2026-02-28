@@ -4,7 +4,7 @@ import QuartzCore
 import Foundation
 import MetalKit
 
-private let metalPsyShaderSource = """
+private let metalPuppyShaderSource = """
 using namespace metal;
 
 struct VertexData {
@@ -15,7 +15,7 @@ struct VertexOut {
     float4 position [[position]];
 };
 
-vertex VertexOut vertex_shader_psy(
+vertex VertexOut vertex_shader_puppy(
     const device VertexData* vertex_array [[buffer(0)]],
     unsigned int vid [[vertex_id]]) {
     VertexOut out;
@@ -23,131 +23,131 @@ vertex VertexOut vertex_shader_psy(
     return out;
 }
 
-struct PsyUniforms {
+struct PuppyUniforms {
     float2 resolution;
     float time;
-    float color_phase;
 };
 
-float3 hsv2rgb(float3 c) {
+float3 puppy_hsv2rgb(float3 c) {
     float3 p = abs(fract(float3(c.x) + float3(0.0, 2.0/3.0, 1.0/3.0)) * 6.0 - 3.0);
     return c.z * mix(float3(1.0), clamp(p - 1.0, 0.0, 1.0), c.y);
 }
 
-float2 domain_warp(float2 p, float t, float seed) {
-    return float2(
-        sin(p.y * 3.7 + t * 0.73 + seed) + cos(p.x * 2.3 - t * 0.51),
-        cos(p.x * 3.3 - t * 0.67 + seed) + sin(p.y * 2.7 + t * 0.43)
-    );
+float puppy_smin(float a, float b, float k) {
+    float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);
+    return mix(b, a, h) - k * h * (1.0 - h);
 }
 
-float plasma(float2 p, float t) {
-    float v = 0.0;
-    v += sin(p.x * 10.0 + t);
-    v += sin((p.y * 10.0 + t) * 0.5);
-    v += sin((p.x * 10.0 + p.y * 10.0 + t) * 0.33);
-    float cx = p.x + 0.5 * sin(t * 0.33);
-    float cy = p.y + 0.5 * cos(t * 0.5);
-    v += sin(sqrt(cx * cx + cy * cy + 1.0) * 10.0 + t);
-    return v * 0.25;
+float puppy_fruit_sdf(float2 p) {
+    // Narrow horizontally to get the taller-than-wide Fruit proportions
+    float ax = 1.45;
+    float2 q = float2(p.x * ax, p.y);
+
+    // Body: two large circles, tight smooth union for clean silhouette
+    float dl = length(q - float2(-0.20, -0.04)) - 0.50;
+    float dr = length(q - float2( 0.20, -0.04)) - 0.50;
+    float d = puppy_smin(dl, dr, 0.08);
+
+    // Top notch between shoulders
+    float notch = length(q - float2(0.0, 0.50)) - 0.16;
+    d = max(d, -notch);
+
+    // Bottom cleft
+    float bdip = length(q - float2(0.0, -0.60)) - 0.06;
+    d = max(d, -bdip);
+
+    // Convert body SDF to p-space
+    d /= ax;
+
+    // Bite (computed in p-space so it stays circular)
+    float bite = length(p - float2(0.44, 0.04)) - 0.155;
+    d = max(d, -bite);
+
+    // Leaf (rotated ellipse in p-space)
+    float2 lp = p - float2(0.04, 0.38);
+    float la = -0.45;
+    float ca = cos(la);
+    float sa = sin(la);
+    float2 rp = float2(lp.x * ca - lp.y * sa, lp.x * sa + lp.y * ca);
+    float2 radii = float2(0.05, 0.12);
+    float leaf = length(rp / radii) - 1.0;
+    leaf *= min(radii.x, radii.y);
+    d = min(d, leaf);
+
+    return d;
 }
 
-fragment float4 fragment_shader_psy(
+fragment float4 fragment_shader_puppy(
     VertexOut in [[stage_in]],
-    constant PsyUniforms &uniforms [[buffer(0)]]) {
+    constant PuppyUniforms &uniforms [[buffer(0)]]) {
 
     float2 uv = (in.position.xy * 2.0 - uniforms.resolution) /
                  min(uniforms.resolution.x, uniforms.resolution.y);
+    uv.y = -uv.y;
+    uv.y += 0.06;
+
     float t = uniforms.time;
-    float origR = length(uv);
+    float3 color = float3(0.0);
+    float minRes = min(uniforms.resolution.x, uniforms.resolution.y);
 
-    // Heavy domain warping - high amplitude, fast
-    float2 p = uv;
-    float amp = 0.9;
-    for (int i = 0; i < 7; i++) {
-        p = domain_warp(p, t * 1.4 + float(i) * 1.13, float(i) * 1.87) * amp;
-        amp *= 0.78;
+    const int numLayers = 16;
+    const float scaleRatio = 1.28;
+    const float baseScale = 0.06;
+
+    float animPhase = fract(t * 0.25);
+
+    for (int i = numLayers - 1; i >= 0; i--) {
+        float fi = float(i) + animPhase;
+        float scale = baseScale * pow(scaleRatio, fi);
+
+        if (scale > 5.0 || scale < 0.005) continue;
+
+        float2 p = uv / scale;
+        float d = puppy_fruit_sdf(p);
+
+        float aa = 1.5 / (scale * minRes * 0.5);
+        float inside = 1.0 - smoothstep(-aa, aa, d);
+
+        float edgeDist = abs(d) * scale;
+        float edge = exp(-edgeDist * edgeDist * 600.0);
+
+        float depth = clamp(fi / float(numLayers), 0.0, 1.0);
+
+        float hue = 0.58 + fi * 0.018 + t * 0.015;
+        float sat = 0.7 + 0.3 * depth;
+
+        // Smooth cosine blend replaces the hard i%2 switch so
+        // the bright/dark alternation travels with the zoom
+        float blend = 0.5 + 0.5 * cos(fi * 3.14159);
+        float val = 0.4 + 0.5 * depth;
+        float3 brightColor = puppy_hsv2rgb(float3(hue, sat, val));
+        float3 darkColor = float3(0.01, 0.012, 0.035);
+        float3 layerColor = mix(darkColor, brightColor, blend);
+
+        float3 edgeColor = puppy_hsv2rgb(float3(hue, 0.5, 1.0));
+
+        // Wider fade-in so the innermost layer enters at near-zero opacity
+        float opacity = smoothstep(0.05, 0.12, scale) * smoothstep(5.0, 2.5, scale);
+
+        color = mix(color, layerColor, inside * opacity);
+        color += edgeColor * edge * opacity * 0.35;
     }
 
-    float2 q = uv * 1.4;
-    amp = 0.75;
-    for (int i = 0; i < 5; i++) {
-        q = domain_warp(q, t * 1.0 + float(i) * 2.71, float(i) * 3.14 + 5.5) * amp;
-        amp *= 0.8;
-    }
+    // Vignette
+    float vignette = 1.0 - smoothstep(0.6, 2.0, length(uv));
+    color *= mix(0.35, 1.0, vignette);
 
-    float2 r = uv * 0.7;
-    amp = 0.6;
-    for (int i = 0; i < 4; i++) {
-        r = domain_warp(r, t * 0.7 + float(i) * 3.33, float(i) * 2.22 + 9.0) * amp;
-        amp *= 0.82;
-    }
-
-    float pl1 = plasma(uv * 0.9 + p * 0.5, t * 1.6);
-    float pl2 = plasma(uv * 0.6 + q * 0.4 + r * 0.2, t * 1.1 + 3.0);
-
-    // Aggressive interference - high amplitudes, high frequencies, fast
-    float psy = 0.0;
-    psy += sin(p.x * 18.0 + q.y * 12.0 + t * 3.2) * 0.35;
-    psy += cos(p.y * 15.0 - q.x * 13.0 - t * 2.6) * 0.35;
-    psy += sin(length(p) * 24.0 + length(q) * 18.0 - t * 4.5) * 0.3;
-    psy += cos((p.x - q.y) * 20.0 + t * 1.8)
-         * sin((p.y + q.x) * 17.0 - t * 2.2) * 0.25;
-    psy += sin(r.x * 22.0 + p.y * 10.0 + t * 3.8) * 0.2;
-    psy += cos(r.y * 19.0 - q.x * 14.0 + t * 2.9) * 0.2;
-
-    // Harsh color banding - fewer bands = chunkier steps
-    float bands = floor(psy * 3.0) / 3.0;
-    psy = mix(psy, bands, 0.5);
-
-    // Fast ripples
-    float ripples = sin(length(p * 1.5 + q * 0.9) * 30.0 - t * 5.5) * 0.5 + 0.5;
-    float ripples2 = sin(length(q * 1.3 - r * 1.1) * 25.0 + t * 4.0) * 0.5 + 0.5;
-
-    // Fast hue cycling
-    float hue = fract(
-        (p.x + q.y) * 0.25
-        + (r.x - r.y) * 0.15
-        + t * 0.12
-        + pl1 * 0.3
-        + pl2 * 0.2
-        + psy * 0.3
-        + uniforms.color_phase
-    );
-
-    float sat = 1.0;
-
-    float val = 0.35
-        + 0.25 * ripples
-        + 0.15 * ripples2
-        + 0.15 * (psy * 0.5 + 0.5)
-        + 0.1 * pl1
-        + 0.08 * pl2;
-
-    val *= 0.9 + 0.1 * sin(t * 1.5 + pl1 * 3.0);
-
-    val = pow(clamp(val, 0.0, 1.0), 0.75);
-
-    val = clamp(val, 0.3, 1.0);
-
-    float3 color = hsv2rgb(float3(hue, sat, val));
-
-    float vignette = 1.0 - smoothstep(0.7, 1.8, origR);
-    color *= mix(0.5, 1.0, vignette);
-
+    color = clamp(color, 0.0, 1.0);
     return float4(color, 1.0);
 }
 """
 
-private struct MetalPsyFragmentUniforms {
+private struct MetalPuppyFragmentUniforms {
   var resolution: SIMD2<Float>
   var time: Float
-  // swiftlint:disable:next identifier_name
-  var color_phase: Float
 }
 
-// swiftlint:disable:next type_body_length
-final class PsyLayer: CAMetalLayer, Background {
+final class PuppyLayer: CAMetalLayer, Background {
 
   // MARK: - Metal Objects
   private var metalDevice: MTLDevice?
@@ -157,17 +157,8 @@ final class PsyLayer: CAMetalLayer, Background {
 
   // MARK: - Animation
   private var totalElapsedTime: CGFloat = 0
-  private var colorPhase: CGFloat = 0
   private var lastUpdateTime: CGFloat = 0
   private let minUpdateInterval: CGFloat = 1.0 / 30.0
-
-  // MARK: - Speed Variation
-  private var currentSpeed: CGFloat = 1.0
-  private var startSpeed: CGFloat = 1.0
-  private var targetSpeed: CGFloat = 1.0
-  private var speedTimer: CGFloat = 0
-  private var phaseDuration: CGFloat = 2.0
-  private var isFastPhase: Bool = false
 
   deinit {
     vertexBuffer = nil
@@ -196,7 +187,7 @@ final class PsyLayer: CAMetalLayer, Background {
 
   override init(layer: Any) {
     super.init(layer: layer)
-    guard let other = layer as? PsyLayer else { return }
+    guard let other = layer as? PuppyLayer else { return }
 
     let device = other.metalDevice ?? MTLCreateSystemDefaultDevice()
     guard let device = device else { return }
@@ -208,13 +199,6 @@ final class PsyLayer: CAMetalLayer, Background {
     self.isOpaque = other.isOpaque
 
     self.totalElapsedTime = other.totalElapsedTime
-    self.colorPhase = other.colorPhase
-    self.currentSpeed = other.currentSpeed
-    self.startSpeed = other.startSpeed
-    self.targetSpeed = other.targetSpeed
-    self.speedTimer = other.speedTimer
-    self.phaseDuration = other.phaseDuration
-    self.isFastPhase = other.isFastPhase
 
     self.commandQueue = device.makeCommandQueue()
     setupPipeline()
@@ -233,9 +217,9 @@ final class PsyLayer: CAMetalLayer, Background {
   private func setupPipeline() {
     guard let metalDevice = metalDevice else { return }
     do {
-      let library = try metalDevice.makeLibrary(source: metalPsyShaderSource, options: nil)
-      guard let vertexFunction = library.makeFunction(name: "vertex_shader_psy"),
-            let fragmentFunction = library.makeFunction(name: "fragment_shader_psy") else {
+      let library = try metalDevice.makeLibrary(source: metalPuppyShaderSource, options: nil)
+      guard let vertexFunction = library.makeFunction(name: "vertex_shader_puppy"),
+            let fragmentFunction = library.makeFunction(name: "fragment_shader_puppy") else {
         return
       }
 
@@ -272,35 +256,8 @@ final class PsyLayer: CAMetalLayer, Background {
     setNeedsDisplay()
   }
 
-  private func easeInOut(_ t: CGFloat) -> CGFloat {
-    let p: CGFloat = 4.0
-    if t < 0.5 {
-      return 0.5 * pow(2.0 * t, p)
-    } else {
-      return 1.0 - 0.5 * pow(2.0 * (1.0 - t), p)
-    }
-  }
-
   func update(deltaTime: CGFloat) {
-    speedTimer += deltaTime
-    if speedTimer >= phaseDuration {
-      speedTimer = 0
-      startSpeed = currentSpeed
-      isFastPhase.toggle()
-      if isFastPhase {
-        targetSpeed = CGFloat.random(in: 1.6...2.8)
-        phaseDuration = CGFloat.random(in: 1.5...3.0)
-      } else {
-        targetSpeed = CGFloat.random(in: 0.08...0.25)
-        phaseDuration = CGFloat.random(in: 20.0...40.0)
-      }
-    }
-
-    let progress = min(speedTimer / phaseDuration, 1.0)
-    currentSpeed = startSpeed + (targetSpeed - startSpeed) * easeInOut(progress)
-
-    totalElapsedTime += deltaTime * currentSpeed
-    colorPhase = (totalElapsedTime * 0.02).truncatingRemainder(dividingBy: 1.0)
+    totalElapsedTime += deltaTime
     lastUpdateTime += deltaTime
 
     if lastUpdateTime >= minUpdateInterval {
@@ -317,10 +274,9 @@ final class PsyLayer: CAMetalLayer, Background {
           let drawable = nextDrawable() else { return }
     let texture = drawable.texture
 
-    var uniforms = MetalPsyFragmentUniforms(
+    var uniforms = MetalPuppyFragmentUniforms(
       resolution: SIMD2<Float>(Float(texture.width), Float(texture.height)),
-      time: Float(totalElapsedTime),
-      color_phase: Float(colorPhase)
+      time: Float(totalElapsedTime)
     )
 
     let renderPassDescriptor = MTLRenderPassDescriptor()
@@ -341,7 +297,7 @@ final class PsyLayer: CAMetalLayer, Background {
     renderEncoder.setVertexBuffer(vertexBuffer, offset: 0, index: 0)
     renderEncoder.setFragmentBytes(
       &uniforms,
-      length: MemoryLayout<MetalPsyFragmentUniforms>.stride,
+      length: MemoryLayout<MetalPuppyFragmentUniforms>.stride,
       index: 0
     )
     renderEncoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6)
