@@ -5,6 +5,9 @@ on:
     branches:
       - master
 
+permissions:
+  contents: write
+
 jobs:
   build-and-release:
     name: 🚀 Build and Release .saver
@@ -26,7 +29,7 @@ jobs:
         with:
           path: |
             ~/Library/Developer/Xcode/DerivedData
-          key: ${{ runner.os }}-xcode-deriveddata-${{ hashFiles('**/*.xcodeproj/**', '**/*.xcworkspace/**', 'Podfile.lock', 'Cartfile.resolved') }}
+          key: ${{ runner.os }}-xcode-deriveddata-${{ hashFiles('**/*.pbxproj', '**/*.swift') }}
           restore-keys: |
             ${{ runner.os }}-xcode-deriveddata-
 
@@ -48,8 +51,8 @@ jobs:
         id: extract_changelog
         run: |
           CHANGELOG=$(./.github/scripts/extract_changelog.sh ${{ steps.extract_build_number.outputs.build_number }})
-          echo 'var<<EOF' >> $GITHUB_OUTPUT
-          echo "changelog=$CHANGELOG" >> $GITHUB_OUTPUT
+          echo 'changelog<<EOF' >> $GITHUB_OUTPUT
+          echo "$CHANGELOG" >> $GITHUB_OUTPUT
           echo 'EOF' >> $GITHUB_OUTPUT
 
       - name: 🏷️ Create Release Tag

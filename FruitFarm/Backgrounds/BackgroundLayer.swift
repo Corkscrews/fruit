@@ -24,6 +24,8 @@ final class BackgroundLayer: CAShapeLayer, Background {
 
   func config(fruit: Fruit) { }
 
+  func update(deltaTime: CGFloat) { }
+
   func update(frame: NSRect, fruit: Fruit) {
     self.frame = frame
     updateBezierPath()

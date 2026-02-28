@@ -85,18 +85,14 @@ public final class FruitView: NSView {
   }
 
   private func randomlyChangeFruitType() {
-    // Fade out fruitView over 0.5s, then change, then fade back in.
-    NSAnimationContext.runAnimationGroup({ context in
+    NSAnimationContext.runAnimationGroup({ [weak self] context in
       context.duration = 1.0
-      self.animator().alphaValue = 0.0
+      self?.animator().alphaValue = 0.0
     }, completionHandler: { [weak self] in
-
-      // This will force a random fruit to be loaded.
       self?.fruitBackground?.removeFromSuperlayer()
       self?.fruitBackground = nil
       self?.needsDisplay = true
 
-      // Now fade back in.
       NSAnimationContext.runAnimationGroup({ context in
         context.duration = 1.0
         self?.animator().alphaValue = 1.0
@@ -156,7 +152,7 @@ public final class FruitView: NSView {
     if let fruitBackground = self.fruitBackground {
       fruitBackground.config(fruit: fruit)
     } else {
-      // Necessary otherwise the sublayer is not recovered.
+      self.backgroundLayer?.removeFromSuperlayer()
       self.backgroundLayer = nil
       switch self.fruitMode {
       case .random:
@@ -171,18 +167,22 @@ public final class FruitView: NSView {
     if let backgroundLayer = self.backgroundLayer {
       backgroundLayer.config(fruit: fruit)
     } else {
-      backgroundLayer = BackgroundLayer(frame: self.frame)
-      backgroundLayer?.addSublayer(fruitBackground!)
+      let newBackground = BackgroundLayer(frame: self.frame)
+      newBackground.contentsScale = displayContentsScale()
+      if let fruitBg = fruitBackground {
+        newBackground.addSublayer(fruitBg)
+      }
+      backgroundLayer = newBackground
     }
 
-    // Required to rebuild the leaf and fruit paths, otherwise
-    // the elements won't change in size.
     setupFruitAndLeafObjects()
 
-    backgroundLayer!.mask = createLeafAndFruitMask()
+    guard let backgroundLayer = self.backgroundLayer else { return }
+    backgroundLayer.mask = createLeafAndFruitMask()
     if needsAddBackgroundLayer {
-      layer.addSublayer(backgroundLayer!)
+      layer.addSublayer(backgroundLayer)
     }
+    updateLayerScales()
   }
 
   private func buildFruitBackground(_ fruitType: FruitType) -> (CALayer & Background)? {
@@ -209,15 +209,22 @@ public final class FruitView: NSView {
     }
   }
 
+  private func displayContentsScale() -> CGFloat {
+    window?.screen?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2.0
+  }
+
   /// Creates the mask layer for the fruit and leaf shapes.
   private func createLeafAndFruitMask() -> CAShapeLayer {
+    let scale = displayContentsScale()
     let maskLeafLayer = CAShapeLayer()
     maskLeafLayer.frame = self.frame
     maskLeafLayer.path = leaf.transformedPath.quartzPath
+    maskLeafLayer.contentsScale = scale
     maskLeafLayer.allowsEdgeAntialiasing = true
     let maskFruitLayer = CAShapeLayer()
     maskFruitLayer.frame = self.frame
     maskFruitLayer.path = fruit.transformedPath.quartzPath
+    maskFruitLayer.contentsScale = scale
     maskFruitLayer.allowsEdgeAntialiasing = true
     maskFruitLayer.addSublayer(maskLeafLayer)
     return maskFruitLayer
@@ -294,9 +301,9 @@ public final class FruitView: NSView {
     print("🔄 FruitView: Recreating layers - scale change \(oldScale) → \(newScale) on \(screenName)")
     #endif
 
-    // Remove existing layers
     fruitBackground?.removeFromSuperlayer()
     fruitBackground = nil
+    backgroundLayer?.removeFromSuperlayer()
     backgroundLayer = nil
 
     // Force redraw which will recreate layers with correct scale

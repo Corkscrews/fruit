@@ -70,7 +70,9 @@ final class RainbowsLayer: CALayer, Background {
 
     linePaths = []
     colorsForPath = []
-    currentLineOffsets = Array(repeating: 0, count: totalLines)
+    if currentLineOffsets.count != totalLines {
+      currentLineOffsets = Array(repeating: 0, count: totalLines)
+    }
 
     for index in 0..<totalLines {
       let path = NSBezierPath()

@@ -100,18 +100,18 @@ public final class MetalView: MTKView, MTKViewDelegate {
   private func makePreviewImage(filter: CIFilter) -> CIImage? {
     let text = " "
     let size = bounds.size
-    let textImage = NSImage(size: size)
-    textImage.lockFocus()
-    let style = NSMutableParagraphStyle()
-    style.alignment = .center
-    let attrs: [NSAttributedString.Key: Any] = [
-      .font: NSFont.systemFont(ofSize: min(size.width, size.height) / 8, weight: .bold),
-      .foregroundColor: NSColor.white,
-      .paragraphStyle: style
-    ]
-    let rect = CGRect(x: 0, y: (size.height - 40) / 2, width: size.width, height: 40)
-    (text as NSString).draw(in: rect, withAttributes: attrs)
-    textImage.unlockFocus()
+    let textImage = NSImage(size: size, flipped: false) { drawRect in
+      let style = NSMutableParagraphStyle()
+      style.alignment = .center
+      let attrs: [NSAttributedString.Key: Any] = [
+        .font: NSFont.systemFont(ofSize: min(size.width, size.height) / 8, weight: .bold),
+        .foregroundColor: NSColor.white,
+        .paragraphStyle: style
+      ]
+      let rect = CGRect(x: 0, y: (drawRect.height - 40) / 2, width: drawRect.width, height: 40)
+      (text as NSString).draw(in: rect, withAttributes: attrs)
+      return true
+    }
     guard let cgImage = textImage.cgImage(
       forProposedRect: nil,
       context: nil,

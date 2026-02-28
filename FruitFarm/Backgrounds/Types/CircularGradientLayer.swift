@@ -146,14 +146,14 @@ final class MetalCircularGradientLayer: CAMetalLayer, Background {
       Float($0) / Float(colorArray.count - 1)
     }
   }()
-  private var gradientLocationsBuffer: MTLBuffer!
+  private var gradientLocationsBuffer: MTLBuffer?
 
   // MARK: - Metal Objects
-  private var metalDevice: MTLDevice!
-  private var commandQueue: MTLCommandQueue!
-  private var pipelineState: MTLRenderPipelineState!
-  private var vertexBuffer: MTLBuffer!
-  private var currentInterpolatedColorsBuffer: MTLBuffer!
+  private var metalDevice: MTLDevice?
+  private var commandQueue: MTLCommandQueue?
+  private var pipelineState: MTLRenderPipelineState?
+  private var vertexBuffer: MTLBuffer?
+  private var currentInterpolatedColorsBuffer: MTLBuffer?
 
   // MARK: - Animation Properties
   private var colorIndex: Int = 0
@@ -192,7 +192,7 @@ final class MetalCircularGradientLayer: CAMetalLayer, Background {
 
     // Initial color buffer setup
     let initialColors = calculateCurrentInterpolatedColors()
-    currentInterpolatedColorsBuffer = metalDevice.makeBuffer(
+    currentInterpolatedColorsBuffer = metalDevice?.makeBuffer(
       bytes: initialColors,
       length: MemoryLayout<SIMD4<Float>>.stride * colorArray.count,
       options: .storageModeShared
@@ -204,133 +204,63 @@ final class MetalCircularGradientLayer: CAMetalLayer, Background {
     fatalError("init(coder:) has not been implemented")
   }
 
-  // swiftlint:disable:next todo
-  // TODO: Can't fix this, something is wrong with the invalidation of strong references.
   override init(layer: Any) {
     super.init(layer: layer)
-//    if let other = layer as? MetalCircularGradientLayer {
-//      // 1. Establish the MTLDevice for this new layer.
-//
-//      let determinedDevice: MTLDevice? // Use an optional to be explicit about nil possibility
-//      if let sourceStrongDeviceRef = other.metalDevice {
-//        print("DEBUG init(layer:Any): Using device from other.metalDevice: \(sourceStrongDeviceRef)")
-//        determinedDevice = sourceStrongDeviceRef
-//      } else {
-//        print("DEBUG init(layer:Any): other.metalDevice is nil. Attempting to create a new system default device.")
-//        guard let newDevice = MTLCreateSystemDefaultDevice() else {
-//          // This fatalError should be hit if MTLCreateSystemDefaultDevice() returns nil.
-//          // If the assert below (checking self.device) is hit, and this wasn't, it's very strange.
-//          fatalError("Metal is not supported on this device or MTLCreateSystemDefaultDevice() failed. Cannot create MTLDevice for copied layer.")
-//        }
-//        print("DEBUG init(layer:Any): Created new system default device: \(newDevice)")
-//        determinedDevice = newDevice
-//      }
-//
-//      // At this point, determinedDevice should ideally be a valid MTLDevice.
-//      // If determinedDevice is nil here, the logic above has a flaw or an assumption was wrong.
-//      guard let deviceToUseForNewLayer = determinedDevice else {
-//          fatalError("CRITICAL init(layer:Any): deviceToUseForNewLayer is nil after determination logic. This should not happen if previous guards/conditions were met.")
-//      }
-//      print("DEBUG init(layer:Any): Confirmed deviceToUseForNewLayer is: \(deviceToUseForNewLayer)")
-//
-//      // Set our strong reference first to ensure the device is retained.
-//      self.metalDevice = deviceToUseForNewLayer // self.metalDevice is MTLDevice! (strong)
-//      print("DEBUG init(layer:Any): Assigned to self.metalDevice. Current value: \(String(describing: self.metalDevice))")
-//
-//      // Check if self.metalDevice (the strong reference) actually holds the device.
-//      // If self.metalDevice is nil here, the assignment failed or deviceToUseForNewLayer was problematic.
-//      guard self.metalDevice != nil else {
-//          fatalError("CRITICAL init(layer:Any): self.metalDevice is nil immediately after being assigned deviceToUseForNewLayer (\(deviceToUseForNewLayer)). Strong reference failed.")
-//      }
-//      print("DEBUG init(layer:Any): self.metalDevice successfully holds a strong reference: \(self.metalDevice!)")
-//
-//      // Then set CAMetalLayer's weak reference.
-//      // Assign from self.metalDevice to be certain we're using the object held by the strong ref.
-//      self.device = self.metalDevice // self.device is weak property of CAMetalLayer
-//      print("DEBUG init(layer:Any): Assigned to self.device. Current value: \(String(describing: self.device))")
-//
-//      // CRASH POINT WAS HERE:
-//      // This assertion helps confirm that 'self.device' is actually set.
-//      // If this fails, it means that despite self.metalDevice holding a strong reference,
-//      // self.device (weak) became nil. This is highly unusual if self.metalDevice is valid.
-//      assert(self.device != nil, "CRITICAL init(layer:Any): self.device (CAMetalLayer's weak property) is nil even after self.metalDevice (\(String(describing: self.metalDevice))) holds a strong reference. This suggests an issue with CAMetalLayer's device assignment or the MTLDevice instance itself.")
-//
-//      // --- At this point, self.metalDevice and self.device should both point to the same valid, live MTLDevice object ---
-//
-//      // 2. Copy CAMetalLayer specific properties.
-//      if self.device != nil {
-//        if other.pixelFormat == .invalid {
-//          print("Warning init(layer:Any): Source layer's pixelFormat was MTLPixelFormat.invalid. Setting to .bgra8Unorm for the new layer.")
-//          self.pixelFormat = .bgra8Unorm
-//        } else {
-//          self.pixelFormat = other.pixelFormat
-//        }
-//        self.framebufferOnly = other.framebufferOnly
-//        self.isOpaque = other.isOpaque
-//      } else {
-//          // This should have been caught by the assert.
-//          fatalError("CRITICAL init(layer:Any): self.device is nil before setting pixelFormat. The earlier assert should have caught this.")
-//      }
-//
-//      // ... (rest of your init(layer: Any) method: copy custom properties, re-create Metal resources) ...
-//      // 3. Copy custom application-specific state properties
-//      self.colorIndex = other.colorIndex
-//      self.elapsedTime = other.elapsedTime
-//      self.continuousTotalElapsedTimeForRotation = other.continuousTotalElapsedTimeForRotation
-//      self.currentFruitMaxDimension = other.currentFruitMaxDimension
-//
-//      // 4. Re-create all Metal resources
-//      guard let currentDeviceForResources = self.metalDevice else {
-//        fatalError("self.metalDevice is unexpectedly nil before re-creating Metal resources in init(layer:Any).")
-//      }
-//      guard let cq = currentDeviceForResources.makeCommandQueue() else {
-//        fatalError("Could not create Metal command queue for copied layer using device: \(currentDeviceForResources).")
-//      }
-//      self.commandQueue = cq
-//      setupPipeline()
-//      createVertexBuffers()
-//      createColorLocationBuffer()
-//      let currentColors = calculateCurrentInterpolatedColors()
-//      if let colorBuffer = currentDeviceForResources.makeBuffer(bytes: currentColors, length: MemoryLayout<SIMD4<Float>>.stride * colorArray.count, options: .storageModeShared) {
-//        self.currentInterpolatedColorsBuffer = colorBuffer
-//      } else {
-//        fatalError("Failed to create currentInterpolatedColorsBuffer for copied layer using device: \(currentDeviceForResources).")
-//      }
-//
-//    } else {
-//      print("Warning init(layer:Any): init(layer: Any) called with a layer that is not a MetalCircularGradientLayer.")
-//    }
+    guard let other = layer as? MetalCircularGradientLayer else { return }
+
+    let device = other.metalDevice ?? MTLCreateSystemDefaultDevice()
+    guard let device = device else { return }
+    self.metalDevice = device
+    self.device = device
+
+    self.pixelFormat = other.pixelFormat != .invalid ? other.pixelFormat : .bgra8Unorm
+    self.framebufferOnly = other.framebufferOnly
+    self.isOpaque = other.isOpaque
+
+    self.colorIndex = other.colorIndex
+    self.elapsedTime = other.elapsedTime
+    self.continuousTotalElapsedTimeForRotation = other.continuousTotalElapsedTimeForRotation
+    self.currentFruitMaxDimension = other.currentFruitMaxDimension
+
+    self.commandQueue = device.makeCommandQueue()
+    setupPipeline()
+    createVertexBuffers()
+    createColorLocationBuffer()
+
+    let currentColors = calculateCurrentInterpolatedColors()
+    currentInterpolatedColorsBuffer = device.makeBuffer(
+      bytes: currentColors,
+      length: MemoryLayout<SIMD4<Float>>.stride * colorArray.count,
+      options: .storageModeShared
+    )
   }
 
   private func setupMetal() {
-    guard let device = MTLCreateSystemDefaultDevice() else {
-      fatalError("Metal is not supported on this device")
-    }
+    guard let device = MTLCreateSystemDefaultDevice() else { return }
     self.metalDevice = device
-    self.device = device // Assign to CAMetalLayer's device property
+    self.device = device
 
-    guard let commandQueue = device.makeCommandQueue() else {
-      fatalError("Could not create Metal command queue")
-    }
+    guard let commandQueue = device.makeCommandQueue() else { return }
     self.commandQueue = commandQueue
   }
 
   private func setupPipeline() {
+    guard let metalDevice = metalDevice else { return }
     do {
       let library = try metalDevice.makeLibrary(source: metalShaderSource, options: nil)
       guard let vertexFunction = library.makeFunction(name: "vertex_shader_circular_gradient"),
             let fragmentFunction = library.makeFunction(name: "fragment_shader_circular_gradient") else {
-        fatalError("Could not find shader functions")
+        return
       }
 
       let pipelineDescriptor = MTLRenderPipelineDescriptor()
       pipelineDescriptor.vertexFunction = vertexFunction
       pipelineDescriptor.fragmentFunction = fragmentFunction
-      pipelineDescriptor.colorAttachments[0].pixelFormat = self.pixelFormat // Match CAMetalLayer's format
+      pipelineDescriptor.colorAttachments[0].pixelFormat = self.pixelFormat
 
       pipelineState = try metalDevice.makeRenderPipelineState(descriptor: pipelineDescriptor)
     } catch {
-      fatalError("Could not create Metal render pipeline state: \(error)")
+      return
     }
   }
 
@@ -346,14 +276,14 @@ final class MetalCircularGradientLayer: CAMetalLayer, Background {
       SIMD2<Float>( 1.0, 1.0), // V3: Top Right
       SIMD2<Float>(-1.0, 1.0)  // V2: Top Left (repeated)
     ]
-    vertexBuffer = metalDevice.makeBuffer(
+    vertexBuffer = metalDevice?.makeBuffer(
       bytes: vertices,
       length: MemoryLayout<SIMD2<Float>>.stride * vertices.count,
       options: .storageModeShared)
   }
 
   private func createColorLocationBuffer() {
-    gradientLocationsBuffer = metalDevice.makeBuffer(
+    gradientLocationsBuffer = metalDevice?.makeBuffer(
       bytes: gradientLocations,
       length: MemoryLayout<Float>.stride * gradientLocations.count,
       options: .storageModeShared
@@ -395,7 +325,8 @@ final class MetalCircularGradientLayer: CAMetalLayer, Background {
 
   // MARK: - Drawing
   override func display() {
-    guard let drawable = nextDrawable() else { return }
+    guard let commandQueue = commandQueue,
+          let drawable = nextDrawable() else { return }
     let texture = drawable.texture
 
     updateColorBuffer(with: calculateCurrentInterpolatedColors())
@@ -418,17 +349,18 @@ final class MetalCircularGradientLayer: CAMetalLayer, Background {
   }
 
   private func updateColorBuffer(with currentColors: [SIMD4<Float>]) {
-    if currentInterpolatedColorsBuffer.length != MemoryLayout<SIMD4<Float>>.stride * currentColors.count {
-      currentInterpolatedColorsBuffer = metalDevice.makeBuffer(
-        bytes: currentColors,
-        length: MemoryLayout<SIMD4<Float>>.stride * currentColors.count,
-        options: .storageModeShared)
-      return
-    }
-    currentInterpolatedColorsBuffer.contents().copyMemory(
+    let requiredSize = MemoryLayout<SIMD4<Float>>.stride * currentColors.count
+    if let existing = currentInterpolatedColorsBuffer, existing.length == requiredSize {
+      existing.contents().copyMemory(
         from: currentColors,
-        byteCount: MemoryLayout<SIMD4<Float>>.stride * currentColors.count
+        byteCount: requiredSize
       )
+    } else {
+      currentInterpolatedColorsBuffer = metalDevice?.makeBuffer(
+        bytes: currentColors,
+        length: requiredSize,
+        options: .storageModeShared)
+    }
   }
 
   private func calculateUniforms(texture: MTLTexture) -> MetalCircularGradientFragmentUniforms {
@@ -474,6 +406,11 @@ final class MetalCircularGradientLayer: CAMetalLayer, Background {
     _ renderEncoder: MTLRenderCommandEncoder,
     uniforms: inout MetalCircularGradientFragmentUniforms
   ) {
+    guard let pipelineState = pipelineState,
+          let vertexBuffer = vertexBuffer,
+          let colorsBuffer = currentInterpolatedColorsBuffer,
+          let locationsBuffer = gradientLocationsBuffer else { return }
+
     renderEncoder.setRenderPipelineState(pipelineState)
     renderEncoder.setVertexBuffer(vertexBuffer, offset: 0, index: 0)
 
@@ -482,8 +419,8 @@ final class MetalCircularGradientLayer: CAMetalLayer, Background {
       length: MemoryLayout<MetalCircularGradientFragmentUniforms>.stride,
       index: 0
     )
-    renderEncoder.setFragmentBuffer(currentInterpolatedColorsBuffer, offset: 0, index: 1)
-    renderEncoder.setFragmentBuffer(gradientLocationsBuffer, offset: 0, index: 2)
+    renderEncoder.setFragmentBuffer(colorsBuffer, offset: 0, index: 1)
+    renderEncoder.setFragmentBuffer(locationsBuffer, offset: 0, index: 2)
   }
 
   private func calculateCurrentInterpolatedColors() -> [SIMD4<Float>] {
