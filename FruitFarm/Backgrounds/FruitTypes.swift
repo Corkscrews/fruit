@@ -10,4 +10,6 @@ public enum FruitType: String, CaseIterable {
   case solid
   case linearGradient
   case circularGradient
+  case psychedelic
+  case liquid
 }

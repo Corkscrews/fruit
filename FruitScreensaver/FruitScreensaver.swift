@@ -89,7 +89,9 @@ final class FruitScreensaver: ScreenSaverView {
 
   @objc
   private func neuterOldInstance(_ notification: Notification) {
-    guard notification.object as? FruitScreensaver !== self else { return }
+    guard let newInstance = notification.object as? FruitScreensaver,
+          newInstance !== self,
+          newInstance.actualIsPreview == self.actualIsPreview else { return }
     lameDuck = true
     isPaused = true
     metalView?.isRenderingPaused = true
