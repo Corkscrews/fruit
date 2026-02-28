@@ -25,9 +25,20 @@ vertex VertexOut vertex_shader_warp(
 
 struct WarpUniforms {
     float2 resolution;
+    float2 uvOffset;
     float time;
     float speed;
     float referenceSize;
+    float warpFactor;
+    float streakMix;
+    float brightScaled;
+    float tScroll;
+    float cull;
+    float dopplerMix;
+    float beamingMix;
+    float twinkleSolid;
+    float glow;
+    float vigRadius;
 };
 
 float warp_hash(float2 p) {
@@ -36,138 +47,123 @@ float warp_hash(float2 p) {
     return fract((p3.x + p3.y) * p3.z);
 }
 
+float2 warp_hash2(float2 p) {
+    float3 p3 = fract(float3(p.xyx) * 0.1031);
+    p3 += dot(p3, p3.yzx + 33.33);
+    return fract(float2((p3.x + p3.y) * p3.z, (p3.x + p3.z) * p3.y));
+}
+
 fragment float4 fragment_shader_warp(
     VertexOut in [[stage_in]],
-    constant WarpUniforms &uniforms [[buffer(0)]]) {
+    constant WarpUniforms &u [[buffer(0)]]) {
 
-    float2 uv = (in.position.xy - uniforms.resolution * 0.5) /
-                 uniforms.referenceSize;
+    float2 uv = (in.position.xy - u.resolution * 0.5) / u.referenceSize + u.uvOffset;
+    float2 warp_uv = uv * u.warpFactor;
 
-    float fruitScale = min(
-        min(uniforms.resolution.x, uniforms.resolution.y) / uniforms.referenceSize,
-        2.0);
-    uv.y -= fruitScale * 0.04;
-    uv.x += fruitScale * 0.005;
-
-    float t = uniforms.time;
-    float spd = uniforms.speed;
-
-    float vib = smoothstep(0.3, 1.5, spd) * (1.0 - smoothstep(8.0, 12.0, spd));
-    float vib_strength = 0.001;
-    float vib_amt = vib * vib_strength;
-    float2 shake = float2(
-        sin(t * 130.0) * 0.7 + sin(t * 73.0) * 0.3,
-        cos(t * 110.0) * 0.6 + cos(t * 89.0) * 0.4
-    );
-    uv += shake * vib_amt;
-
-    float aberration = 1.0 / (1.0 + spd * 0.04);
-    float2 warp_uv = uv * mix(1.0, aberration, smoothstep(2.0, 8.0, spd));
-
-    // 0 = dots only, 1 = full streaks
-    float streak_mix = smoothstep(0.3, 1.5, spd);
-    // always visible, brighter at warp
-    float bright = mix(4.0, 1.3, smoothstep(0.5, 2.0, spd));
-
-    float scroll = mix(0.02, 0.5, smoothstep(0.1, 10.0, spd));
+    bool skip_twinkle = u.twinkleSolid > 0.99;
+    float t = u.time;
 
     float3 col = float3(0.0);
 
-    float cull = mix(0.02, 0.15, smoothstep(0.3, 2.0, spd));
-    float iter = 30;
+    constexpr int iter = 20;
+    constexpr float inv_iter = 1.0 / float(iter);
 
     for (int i = 0; i < iter; i++) {
         float fi = float(i);
-        float z = fract(fi / iter + t * scroll + warp_hash(float2(fi, fi * 0.7)) * 0.05);
+        float z = fract(fi * inv_iter + u.tScroll + warp_hash(float2(fi, fi * 0.7)) * 0.05);
         float scale = mix(18.0, 0.8, z);
+        float inv_scale = 1.0 / scale;
         float fade = smoothstep(0.0, 0.1, z) * smoothstep(1.0, 0.8, z);
+        float ds = 0.0018 + 0.0006 * z;
+        float inv_ds2 = 1.0 / (ds * ds);
+        float fi64 = fi * 64.0;
+        float fi27 = fi * 27.0;
 
         float2 st = warp_uv * scale;
         float2 gid = floor(st);
-        float2 gf = fract(st) - 0.5;
 
         for (int dy = -1; dy <= 1; dy++) {
             for (int dx = -1; dx <= 1; dx++) {
                 float2 off = float2(float(dx), float(dy));
                 float2 id = gid + off;
 
-                float h1 = warp_hash(id + fi * 64.0);
-                if (h1 < cull) continue;
+                float h1 = warp_hash(id + fi64);
+                if (h1 < u.cull) continue;
 
-                float rx = warp_hash(id * 3.14 + fi * 27.0);
-                float ry = warp_hash(id * 2.71 + fi * 43.0);
-                float2 sp = float2(rx, ry) - 0.5;
+                float2 sp = warp_hash2(id * 3.14 + fi27) - 0.5;
 
-                // Particle screen position
-                float2 ss = (gid + off + sp + 0.5) / scale;
-                float sr = length(ss);
+                float2 ss = (id + sp + 0.5) * inv_scale;
+                float2 delta = warp_uv - ss;
 
-                // --- Dot: tight gaussian, always visible ---
-                float dd = length(warp_uv - ss);
-                float ds = 0.0018 + 0.0006 * z;
-                float pb = exp(-dd * dd / (ds * ds));
+                float sr2 = dot(ss, ss);
+                float dd2 = dot(delta, delta);
 
-                // --- Streak: line segment toward center, warp only ---
+                float ratio = dd2 * inv_ds2;
+                float pb = 1.0 / (1.0 + ratio * ratio);
+
+                float inv_sr = rsqrt(max(sr2, 1e-6));
+                float sr = sr2 * inv_sr;
+
                 float sb = 0.0;
-                if (streak_mix > 0.01) {
-                    float slen = spd * sr * 0.15;
-                    float2 sdir = sr > 0.001 ? normalize(ss) : float2(0.0);
-                    float2 sa = ss;
-                    float2 sba = -sdir * slen;
+                if (u.streakMix > 0.01) {
+                    float slen = u.speed * sr * 0.15;
+                    float2 sba = ss * (-inv_sr * slen);
                     float sba2 = dot(sba, sba);
-                    float2 pa = warp_uv - sa;
                     float tp = sba2 > 0.0001
-                        ? clamp(dot(pa, sba) / sba2, 0.0, 1.0) : 0.0;
-                    float seg_d = length(pa - sba * tp);
+                        ? clamp(dot(delta, sba) / sba2, 0.0, 1.0) : 0.0;
+                    float2 seg_v = delta - sba * tp;
                     float sw = 0.001 * (1.0 + tp * 0.8);
-                    sb = exp(-seg_d * seg_d / (sw * sw))
-                       * streak_mix * (1.0 - tp * 0.6);
+                    float sratio = dot(seg_v, seg_v) / (sw * sw);
+                    sb = u.streakMix * (1.0 - tp * 0.6)
+                       / (1.0 + sratio * sratio);
                 }
 
-                float b = max(pb, sb) * fade;
-                b *= smoothstep(0.15, 0.8, h1);
+                float b = max(pb, sb) * fade * smoothstep(0.15, 0.8, h1);
 
-                // Twinkle at low speed, solid at warp
-                float tw = mix(
-                    0.5 + 0.5 * sin(t * 3.0 + warp_hash(id * 17.0) * 6.283),
-                    1.0,
-                    smoothstep(0.3, 1.0, spd)
+                if (!skip_twinkle) {
+                    b *= mix(
+                        0.5 + 0.5 * sin(t * 3.0 + warp_hash(id * 17.0) * 6.283),
+                        1.0,
+                        u.twinkleSolid
+                    );
+                }
+
+                b *= mix(1.0, 1.0 / (1.0 + sr * 4.0), u.beamingMix);
+
+                float cr = fract(sp.x * 7.77 + 0.5);
+                float cr_s1 = smoothstep(0.3, 0.8, cr);
+                float3 sc = float3(
+                    0.5 + 0.45 * cr_s1,
+                    0.6 + 0.37 * cr_s1,
+                    1.0
                 );
-                b *= tw;
+                sc = mix(sc, float3(1.0, 0.9, 0.75), smoothstep(0.85, 0.95, cr));
 
-                float beaming = mix(1.0, 1.0 / (1.0 + sr * 4.0), smoothstep(2.0, 8.0, spd));
-                b *= beaming;
+                if (u.dopplerMix > 0.01) {
+                    float radial_factor = smoothstep(0.0, 0.6, sr);
+                    sc *= mix(float3(1.0),
+                              mix(float3(0.7, 0.8, 1.0), float3(1.0, 0.75, 0.5), radial_factor),
+                              u.dopplerMix);
+                }
 
-                float cr = warp_hash(id * 7.77 + fi);
-                float3 sc = mix(
-                    float3(0.5, 0.6, 1.0),
-                    float3(0.95, 0.97, 1.0),
-                    smoothstep(0.3, 0.8, cr)
-                );
-                sc = mix(sc, float3(1.0, 0.9, 0.75),
-                         smoothstep(0.85, 0.95, cr));
-
-                float doppler_mix = smoothstep(3.0, 8.0, spd);
-                float3 blue_tint = float3(0.7, 0.8, 1.0);
-                float3 red_tint  = float3(1.0, 0.75, 0.5);
-                float radial_factor = smoothstep(0.0, 0.6, sr);
-                sc *= mix(float3(1.0), mix(blue_tint, red_tint, radial_factor), doppler_mix);
-
-                col += sc * b * bright * 0.15;
+                col += sc * (b * u.brightScaled);
             }
         }
     }
 
-    float dist = length(uv);
+    float dist2 = dot(uv, uv);
+    float dist = sqrt(dist2);
 
-    float gf2 = smoothstep(7.0, 12.0, spd) * 0.5;
-    col += float3(0.15, 0.2, 0.45) * exp(-dist * 5.0) * gf2;
-    col += float3(0.3, 0.4, 0.65) * exp(-dist * 14.0) * gf2 * 0.5;
-    col += float3(0.6, 0.65, 0.8) * exp(-dist * 30.0) * gf2 * 0.3;
+    if (u.glow > 0.001) {
+        col += float3(0.15, 0.2, 0.45) * exp(-dist * 5.0) * u.glow;
+        col += float3(0.3, 0.4, 0.65) * exp(-dist * 14.0) * u.glow * 0.5;
+        col += float3(0.6, 0.65, 0.8) * exp(-dist * 30.0) * u.glow * 0.3;
+    }
 
-    float vig_radius = mix(2.0, 1.2, smoothstep(3.0, 10.0, spd));
-    col *= smoothstep(vig_radius, 0.5, dist);
-    col = pow(1.0 - exp(-col * 3.5), float3(0.9));
+    col *= smoothstep(u.vigRadius, 0.5, dist);
+
+    float3 mapped = col * 3.5;
+    col = mapped / (1.0 + mapped);
 
     return float4(col, 1.0);
 }
@@ -175,9 +171,20 @@ fragment float4 fragment_shader_warp(
 
 private struct MetalWarpFragmentUniforms {
   var resolution: SIMD2<Float>
+  var uvOffset: SIMD2<Float>
   var time: Float
   var speed: Float
   var referenceSize: Float
+  var warpFactor: Float
+  var streakMix: Float
+  var brightScaled: Float
+  var tScroll: Float
+  var cull: Float
+  var dopplerMix: Float
+  var beamingMix: Float
+  var twinkleSolid: Float
+  var glow: Float
+  var vigRadius: Float
 }
 
 // swiftlint:disable:next type_body_length
@@ -344,6 +351,11 @@ final class WarpLayer: CAMetalLayer, Background {
     }
   }
 
+  private static func glslSmoothstep(_ edge0: Float, _ edge1: Float, _ x: Float) -> Float {
+    let t = min(max((x - edge0) / (edge1 - edge0), 0), 1)
+    return t * t * (3 - 2 * t)
+  }
+
   // MARK: - Drawing
   override func display() {
     guard let pipelineState = pipelineState,
@@ -352,11 +364,37 @@ final class WarpLayer: CAMetalLayer, Background {
           let drawable = nextDrawable() else { return }
     let texture = drawable.texture
 
+    let spd = Float(currentSpeed)
+    let time = Float(totalElapsedTime)
+    let referenceSize: Float = 300.0 * Float(contentsScale)
+    let resW = Float(texture.width)
+    let resH = Float(texture.height)
+
+    let ss = Self.glslSmoothstep
+    let fruitScale = min(min(resW, resH) / referenceSize, 2.0)
+    let vib = ss(0.3, 1.5, spd) * (1.0 - ss(8.0, 12.0, spd))
+    let aberration = 1.0 / (1.0 + spd * 0.04)
+    let scroll = 0.02 + (0.5 - 0.02) * ss(0.1, 10.0, spd)
+
     var uniforms = MetalWarpFragmentUniforms(
-      resolution: SIMD2<Float>(Float(texture.width), Float(texture.height)),
-      time: Float(totalElapsedTime),
-      speed: Float(currentSpeed),
-      referenceSize: 300.0 * Float(contentsScale)
+      resolution: SIMD2<Float>(resW, resH),
+      uvOffset: SIMD2<Float>(
+        fruitScale * 0.005 + sin(time * 130.0) * vib * 0.001,
+        -fruitScale * 0.04 + cos(time * 110.0) * vib * 0.001
+      ),
+      time: time,
+      speed: spd,
+      referenceSize: referenceSize,
+      warpFactor: 1.0 + (aberration - 1.0) * ss(2.0, 8.0, spd),
+      streakMix: ss(0.3, 1.5, spd),
+      brightScaled: (4.0 + (1.3 - 4.0) * ss(0.5, 2.0, spd)) * 0.225,
+      tScroll: time * scroll,
+      cull: 0.02 + (0.15 - 0.02) * ss(0.3, 2.0, spd),
+      dopplerMix: ss(3.0, 8.0, spd),
+      beamingMix: ss(2.0, 8.0, spd),
+      twinkleSolid: ss(0.3, 1.0, spd),
+      glow: ss(7.0, 12.0, spd) * 0.5,
+      vigRadius: 2.0 + (1.2 - 2.0) * ss(3.0, 10.0, spd)
     )
 
     let renderPassDescriptor = MTLRenderPassDescriptor()
