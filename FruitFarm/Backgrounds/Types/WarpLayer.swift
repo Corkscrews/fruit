@@ -67,7 +67,7 @@ fragment float4 fragment_shader_warp(
     // 0 = dots only, 1 = full streaks
     float streak_mix = smoothstep(0.3, 1.5, spd);
     // always visible, brighter at warp
-    float bright = mix(1.0, 1.3, smoothstep(0.5, 2.0, spd));
+    float bright = mix(4.0, 1.3, smoothstep(0.5, 2.0, spd));
 
     float scroll = mix(0.02, 0.5, smoothstep(0.1, 10.0, spd));
 
