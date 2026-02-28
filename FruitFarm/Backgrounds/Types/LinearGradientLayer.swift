@@ -78,6 +78,7 @@ private struct MetalLinearGradientFragmentUniforms {
   // swiftlint:enable identifier_name
 }
 
+// swiftlint:disable:next type_body_length
 final class MetalLinearGradientLayer: CAMetalLayer, Background {
 
   // MARK: - Helper Structs (from MetalCircularGradientLayer)
@@ -314,44 +315,17 @@ final class MetalLinearGradientLayer: CAMetalLayer, Background {
 
   // MARK: - Drawing
   override func display() {
-    guard let pipelineState = pipelineState,
-          let commandQueue = commandQueue,
-          let vertexBuffer = vertexBuffer,
-          let gradientLocationsBuffer = gradientLocationsBuffer,
+    guard let commandQueue = commandQueue,
           let drawable = nextDrawable() else { return }
     let texture = drawable.texture
 
-    let currentColors = calculateCurrentInterpolatedColors()
-    let bufferSize = MemoryLayout<SIMD4<Float>>.stride * currentColors.count
-    if let existing = currentInterpolatedColorsBuffer, existing.length == bufferSize {
-      existing.contents().copyMemory(
-        from: currentColors,
-        byteCount: MemoryLayout<SIMD4<Float>>.stride * currentColors.count
-      )
-    } else {
-      currentInterpolatedColorsBuffer = metalDevice?.makeBuffer(
-        bytes: currentColors,
-        length: bufferSize,
-        options: .storageModeShared
-      )
-    }
-
-    guard let colorsBuffer = currentInterpolatedColorsBuffer else { return }
+    updateColorBuffer(with: calculateCurrentInterpolatedColors())
 
     var uniforms = MetalLinearGradientFragmentUniforms(
       resolution: SIMD2<Float>(Float(texture.width), Float(texture.height)),
       num_color_stops: Int32(colorArray.count)
     )
-
-    let renderPassDescriptor = MTLRenderPassDescriptor()
-    renderPassDescriptor.colorAttachments[0].texture = texture
-    renderPassDescriptor.colorAttachments[0].loadAction = .clear
-    renderPassDescriptor.colorAttachments[0].clearColor = MTLClearColor(
-      red: 0,
-      green: 0,
-      blue: 0,
-      alpha: 1
-    )
+    let renderPassDescriptor = createRenderPassDescriptor(texture: texture)
 
     guard let commandBuffer = commandQueue.makeCommandBuffer(),
           let renderEncoder = commandBuffer.makeRenderCommandEncoder(
@@ -360,22 +334,49 @@ final class MetalLinearGradientLayer: CAMetalLayer, Background {
       return
     }
 
-    renderEncoder.setRenderPipelineState(pipelineState)
-    renderEncoder.setVertexBuffer(vertexBuffer, offset: 0, index: 0)
-
-    renderEncoder.setFragmentBytes(
-      &uniforms,
-      length: MemoryLayout<MetalLinearGradientFragmentUniforms>.stride,
-      index: 0
-    )
-    renderEncoder.setFragmentBuffer(colorsBuffer, offset: 0, index: 1)
-    renderEncoder.setFragmentBuffer(gradientLocationsBuffer, offset: 0, index: 2)
-
+    configureRenderEncoder(renderEncoder, uniforms: &uniforms)
     renderEncoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6)
 
     renderEncoder.endEncoding()
     commandBuffer.present(drawable)
     commandBuffer.commit()
+  }
+
+  private func updateColorBuffer(with currentColors: [SIMD4<Float>]) {
+    let bufferSize = MemoryLayout<SIMD4<Float>>.stride * currentColors.count
+    if let existing = currentInterpolatedColorsBuffer, existing.length == bufferSize {
+      existing.contents().copyMemory(from: currentColors, byteCount: bufferSize)
+    } else {
+      currentInterpolatedColorsBuffer = metalDevice?.makeBuffer(
+        bytes: currentColors, length: bufferSize, options: .storageModeShared
+      )
+    }
+  }
+
+  private func createRenderPassDescriptor(texture: MTLTexture) -> MTLRenderPassDescriptor {
+    let desc = MTLRenderPassDescriptor()
+    desc.colorAttachments[0].texture = texture
+    desc.colorAttachments[0].loadAction = .clear
+    desc.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
+    return desc
+  }
+
+  private func configureRenderEncoder(
+    _ renderEncoder: MTLRenderCommandEncoder,
+    uniforms: inout MetalLinearGradientFragmentUniforms
+  ) {
+    guard let pipelineState = pipelineState,
+          let vertexBuffer = vertexBuffer,
+          let colorsBuffer = currentInterpolatedColorsBuffer,
+          let locationsBuffer = gradientLocationsBuffer else { return }
+
+    renderEncoder.setRenderPipelineState(pipelineState)
+    renderEncoder.setVertexBuffer(vertexBuffer, offset: 0, index: 0)
+    renderEncoder.setFragmentBytes(
+      &uniforms, length: MemoryLayout<MetalLinearGradientFragmentUniforms>.stride, index: 0
+    )
+    renderEncoder.setFragmentBuffer(colorsBuffer, offset: 0, index: 1)
+    renderEncoder.setFragmentBuffer(locationsBuffer, offset: 0, index: 2)
   }
 
   private func calculateCurrentInterpolatedColors() -> [SIMD4<Float>] {

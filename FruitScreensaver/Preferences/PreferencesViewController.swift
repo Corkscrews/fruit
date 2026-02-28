@@ -18,8 +18,7 @@ func createPreferencesWindow(preferencesRepository: PreferencesRepository) -> NS
 
 // MARK: - PreferencesViewController
 
-final class PreferencesViewController:
-  NSViewController, NSTableViewDataSource, NSTableViewDelegate {
+final class PreferencesViewController: NSViewController, NSTableViewDataSource, NSTableViewDelegate {
 
   weak var window: NSWindow?
 
@@ -303,8 +302,6 @@ final class PreferencesControlsView: NSView {
     onDoneTapped = nil
     onBackgroundTypeChanged = nil
   }
-
-  // MARK: - Initialization
 
   init(fruitMode: FruitMode) {
     self.fruitMode = fruitMode

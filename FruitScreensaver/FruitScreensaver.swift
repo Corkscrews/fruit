@@ -94,6 +94,7 @@ final class FruitScreensaver: ScreenSaverView {
     isPaused = true
     metalView?.isRenderingPaused = true
     removeFromSuperview()
+    // swiftlint:disable:next notification_center_detachment
     NotificationCenter.default.removeObserver(self)
     DistributedNotificationCenter.default.removeObserver(self)
   }
