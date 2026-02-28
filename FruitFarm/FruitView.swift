@@ -172,6 +172,7 @@ public final class FruitView: NSView {
       backgroundLayer.config(fruit: fruit)
     } else {
       backgroundLayer = BackgroundLayer(frame: self.frame)
+      backgroundLayer?.contentsScale = displayContentsScale()
       backgroundLayer?.addSublayer(fruitBackground!)
     }
 
@@ -183,6 +184,7 @@ public final class FruitView: NSView {
     if needsAddBackgroundLayer {
       layer.addSublayer(backgroundLayer!)
     }
+    updateLayerScales()
   }
 
   private func buildFruitBackground(_ fruitType: FruitType) -> (CALayer & Background)? {
@@ -209,15 +211,22 @@ public final class FruitView: NSView {
     }
   }
 
+  private func displayContentsScale() -> CGFloat {
+    window?.screen?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2.0
+  }
+
   /// Creates the mask layer for the fruit and leaf shapes.
   private func createLeafAndFruitMask() -> CAShapeLayer {
+    let scale = displayContentsScale()
     let maskLeafLayer = CAShapeLayer()
     maskLeafLayer.frame = self.frame
     maskLeafLayer.path = leaf.transformedPath.quartzPath
+    maskLeafLayer.contentsScale = scale
     maskLeafLayer.allowsEdgeAntialiasing = true
     let maskFruitLayer = CAShapeLayer()
     maskFruitLayer.frame = self.frame
     maskFruitLayer.path = fruit.transformedPath.quartzPath
+    maskFruitLayer.contentsScale = scale
     maskFruitLayer.allowsEdgeAntialiasing = true
     maskFruitLayer.addSublayer(maskLeafLayer)
     return maskFruitLayer
