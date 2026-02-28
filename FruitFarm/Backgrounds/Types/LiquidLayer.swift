@@ -52,37 +52,6 @@ float liquid_plasma(float2 p, float t) {
     return v * 0.25;
 }
 
-// SDF of the fruit body derived from Fruit.swift bezier path.
-// Original path bbox: x [35.5, 112.5], y [49.36, 119.61] (77 x 70).
-// After the pi-rotation + scale + translate applied by FruitView,
-// the bite lands on the right side and the stem at the top.
-float liquid_sd_fruit(float2 p) {
-    // Main body: ellipse matching the 77:70 aspect ratio
-    float body = length(p * float2(0.91, 1.0)) - 0.5;
-
-    // Bite cutout on the right, centered slightly above midline
-    float bite = length(p - float2(0.52, -0.04)) - 0.22;
-    body = max(body, -bite);
-
-    // Heart-shaped indent at the top where the stem sits
-    float dip = smoothstep(0.12, 0.0, abs(p.x)) * smoothstep(0.0, -0.52, p.y);
-    body += dip * 0.04;
-
-    return body;
-}
-
-// SDF of the leaf derived from Leaf.swift bezier path.
-// Intersection of two offset circles, tilted ~20 deg.
-float liquid_sd_leaf(float2 p) {
-    float2 lp = p - float2(0.1, -0.56);
-    float ca = cos(-0.35);
-    float sa = sin(-0.35);
-    lp = float2(ca * lp.x - sa * lp.y, sa * lp.x + ca * lp.y);
-    float d1 = length(lp - float2(0.0, 0.04)) - 0.1;
-    float d2 = length(lp - float2(0.0, -0.04)) - 0.1;
-    return max(d1, d2);
-}
-
 fragment float4 fragment_shader_liquid(
     VertexOut in [[stage_in]],
     constant LiquidUniforms &uniforms [[buffer(0)]]) {
@@ -90,14 +59,9 @@ fragment float4 fragment_shader_liquid(
     float2 uv = (in.position.xy * 2.0 - uniforms.resolution) /
                  min(uniforms.resolution.x, uniforms.resolution.y);
     float t = uniforms.time;
-
-    // Fruit + leaf signed-distance drives all contour-based effects
-    float fruit = liquid_sd_fruit(uv);
-    float leaf  = liquid_sd_leaf(uv);
-    float shape = min(fruit, leaf);
     float origR = length(uv);
 
-    // Multi-pass domain warping for organic flow
+    // Primary domain-warp chain
     float2 p = uv;
     float amp = 0.65;
     for (int i = 0; i < 5; i++) {
@@ -105,57 +69,55 @@ fragment float4 fragment_shader_liquid(
         amp *= 0.82;
     }
 
-    // Plasma field
-    float pl = liquid_plasma(uv * 0.8 + p * 0.3, t * 0.9);
+    // Secondary warp chain for layered depth
+    float2 q = uv * 1.3;
+    amp = 0.5;
+    for (int i = 0; i < 4; i++) {
+        q = liquid_domain_warp(q, t * 0.5 + float(i) * 2.53, float(i) * 1.77 + 7.0) * amp;
+        amp *= 0.8;
+    }
 
-    // Fruit-contour concentric rings (follow the silhouette)
-    float fruitRings = sin(shape * 30.0 - t * 3.0) * 0.5 + 0.5;
+    // Two plasma layers from differently-warped positions
+    float pl1 = liquid_plasma(uv * 0.8 + p * 0.3, t * 0.9);
+    float pl2 = liquid_plasma(uv * 0.6 + q * 0.35, t * 0.65 + 2.5);
 
-    // Interference from warped coordinates
+    // Interference built entirely from warped coordinates (no atan2 singularity)
     float interference = 0.0;
     interference += sin(p.x * 9.0 + t * 1.3) * cos(p.y * 7.0 - t * 0.8);
     interference += sin(length(p) * 14.0 - t * 2.2) * 0.6;
-    interference += cos(atan2(p.y, p.x) * 6.0 + t * 0.7 + length(p) * 10.0) * 0.4;
+    interference += cos(q.x * 8.0 + q.y * 5.0 + t * 0.9) * 0.4;
     interference *= 0.25;
 
-    // Spiral that traces the fruit contour
-    float angle = atan2(uv.y, uv.x);
-    float spiral = sin(shape * 25.0 + angle * 4.0 - t * 2.5);
-    float spiralMask = smoothstep(-0.5, 0.5, shape) * 0.1;
+    // Flowing color bands driven by warped coords
+    float colorFlow = sin(p.x * 5.0 + q.y * 3.0 - t * 1.1) * 0.5 + 0.5;
 
-    // Hue: warped angle + shape distance + plasma
+    // Hue: smooth warp-based variation instead of angular
     float hue = fract(
-        atan2(p.y, p.x) / (2.0 * M_PI_F) + 0.5
+        (p.x + p.y) * 0.12
         + t * 0.035
-        + pl * 0.18
-        + shape * 0.2
-        + spiral * spiralMask
+        + pl1 * 0.2
+        + pl2 * 0.12
+        + colorFlow * 0.15
         + uniforms.color_phase
     );
 
-    // Saturation: vivid, modulated by shape distance
-    float sat = 0.8 + 0.2 * sin(shape * 8.0 + t * 1.2 + pl * 3.0);
+    float sat = 0.8 + 0.2 * sin(length(p) * 6.0 + t * 1.2 + pl1 * 3.0);
 
-    // Value: layered from fruit-contour rings + plasma + interference
     float val = 0.45
-        + 0.3 * fruitRings
-        + 0.1 * pl
+        + 0.25 * colorFlow
+        + 0.15 * pl1
+        + 0.1 * pl2
         + interference * 0.12;
 
-    // Pulsing glow along the fruit edge (zero-crossing of the SDF)
-    float edgeGlow = exp(-shape * shape * 50.0);
-    val += edgeGlow * 0.4 * (0.5 + 0.5 * sin(t * 2.0));
-
-    // Subtle center pulse
-    float centerGlow = exp(-origR * origR * 3.0);
-    val = mix(val, 1.0, centerGlow * 0.2 * (0.5 + 0.5 * sin(t * 1.3)));
+    // Soft glow where the two warp fields converge
+    float flowGlow = exp(-length(p - q) * length(p - q) * 2.0);
+    val += flowGlow * 0.15 * (0.5 + 0.5 * sin(t * 1.5));
 
     sat = clamp(sat, 0.0, 1.0);
     val = clamp(val, 0.05, 1.0);
 
     float3 color = liquid_hsv2rgb(float3(hue, sat, val));
 
-    // Soft vignette
     float vignette = 1.0 - smoothstep(0.8, 2.0, origR);
     color *= mix(0.3, 1.0, vignette);
 
