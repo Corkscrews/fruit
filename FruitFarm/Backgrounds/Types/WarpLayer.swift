@@ -74,10 +74,11 @@ fragment float4 fragment_shader_warp(
     float3 col = float3(0.0);
 
     float cull = mix(0.02, 0.15, smoothstep(0.3, 2.0, spd));
+    float iter = 30;
 
-    for (int i = 0; i < 60; i++) {
+    for (int i = 0; i < iter; i++) {
         float fi = float(i);
-        float z = fract(fi / 60.0 + t * scroll);
+        float z = fract(fi / iter + t * scroll + warp_hash(float2(fi, fi * 0.7)) * 0.05);
         float scale = mix(18.0, 0.8, z);
         float fade = smoothstep(0.0, 0.1, z) * smoothstep(1.0, 0.8, z);
 
