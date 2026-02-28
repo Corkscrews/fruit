@@ -12,12 +12,16 @@ Compatible with macOS 11.5 and later.
 
 ### Options
 
-Now you can select four different fruit types:
+Now you can select from multiple fruit types and backgrounds:
 
  - Rainbow
  - Solid
  - Linear gradient
  - Circular gradient
+ - Psychedelic
+ - Liquid
+ - Puppy (Fruit logo tunnel zoom)
+ - Warp Speed (relativistic star field simulation)
   
 *You are welcome to create new designs through PRs!*
 
@@ -33,7 +37,7 @@ You can change those under the options from `System Settings` -> `Screen saver` 
 
 ### Install manually
 
-1. [Click here to Download](https://github.com/Corkscrews/fruit/releases/download/1.3.3/Fruit.saver.tar.gz)
+1. [Click here to Download](https://github.com/Corkscrews/fruit/releases/download/1.3.4/Fruit.saver.tar.gz)
 2. Open **Fruit.saver** (double click).
 3. `"Fruit.saver" can't be opened because it is from an unidentified developer` will appear, press `OK`.
 4. Open `Preferences`.

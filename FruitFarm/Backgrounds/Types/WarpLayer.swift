@@ -52,6 +52,18 @@ fragment float4 fragment_shader_warp(
     float t = uniforms.time;
     float spd = uniforms.speed;
 
+    float vib = smoothstep(0.3, 1.5, spd) * (1.0 - smoothstep(8.0, 12.0, spd));
+    float vib_strength = 0.001;
+    float vib_amt = vib * vib_strength;
+    float2 shake = float2(
+        sin(t * 130.0) * 0.7 + sin(t * 73.0) * 0.3,
+        cos(t * 110.0) * 0.6 + cos(t * 89.0) * 0.4
+    );
+    uv += shake * vib_amt;
+
+    float aberration = 1.0 / (1.0 + spd * 0.04);
+    float2 warp_uv = uv * mix(1.0, aberration, smoothstep(2.0, 8.0, spd));
+
     // 0 = dots only, 1 = full streaks
     float streak_mix = smoothstep(0.3, 1.5, spd);
     // always visible, brighter at warp
@@ -61,13 +73,15 @@ fragment float4 fragment_shader_warp(
 
     float3 col = float3(0.0);
 
-    for (int i = 0; i < 20; i++) {
+    float cull = mix(0.02, 0.15, smoothstep(0.3, 2.0, spd));
+
+    for (int i = 0; i < 60; i++) {
         float fi = float(i);
-        float z = fract(fi / 20.0 + t * scroll);
+        float z = fract(fi / 60.0 + t * scroll);
         float scale = mix(18.0, 0.8, z);
         float fade = smoothstep(0.0, 0.1, z) * smoothstep(1.0, 0.8, z);
 
-        float2 st = uv * scale;
+        float2 st = warp_uv * scale;
         float2 gid = floor(st);
         float2 gf = fract(st) - 0.5;
 
@@ -77,7 +91,7 @@ fragment float4 fragment_shader_warp(
                 float2 id = gid + off;
 
                 float h1 = warp_hash(id + fi * 64.0);
-                if (h1 < 0.15) continue;
+                if (h1 < cull) continue;
 
                 float rx = warp_hash(id * 3.14 + fi * 27.0);
                 float ry = warp_hash(id * 2.71 + fi * 43.0);
@@ -88,7 +102,7 @@ fragment float4 fragment_shader_warp(
                 float sr = length(ss);
 
                 // --- Dot: tight gaussian, always visible ---
-                float dd = length(uv - ss);
+                float dd = length(warp_uv - ss);
                 float ds = 0.0018 + 0.0006 * z;
                 float pb = exp(-dd * dd / (ds * ds));
 
@@ -100,11 +114,11 @@ fragment float4 fragment_shader_warp(
                     float2 sa = ss;
                     float2 sba = -sdir * slen;
                     float sba2 = dot(sba, sba);
-                    float2 pa = uv - sa;
+                    float2 pa = warp_uv - sa;
                     float tp = sba2 > 0.0001
                         ? clamp(dot(pa, sba) / sba2, 0.0, 1.0) : 0.0;
                     float seg_d = length(pa - sba * tp);
-                    float sw = 0.001;
+                    float sw = 0.001 * (1.0 + tp * 0.8);
                     sb = exp(-seg_d * seg_d / (sw * sw))
                        * streak_mix * (1.0 - tp * 0.6);
                 }
@@ -120,6 +134,9 @@ fragment float4 fragment_shader_warp(
                 );
                 b *= tw;
 
+                float beaming = mix(1.0, 1.0 / (1.0 + sr * 4.0), smoothstep(2.0, 8.0, spd));
+                b *= beaming;
+
                 float cr = warp_hash(id * 7.77 + fi);
                 float3 sc = mix(
                     float3(0.5, 0.6, 1.0),
@@ -128,6 +145,12 @@ fragment float4 fragment_shader_warp(
                 );
                 sc = mix(sc, float3(1.0, 0.9, 0.75),
                          smoothstep(0.85, 0.95, cr));
+
+                float doppler_mix = smoothstep(3.0, 8.0, spd);
+                float3 blue_tint = float3(0.7, 0.8, 1.0);
+                float3 red_tint  = float3(1.0, 0.75, 0.5);
+                float radial_factor = smoothstep(0.0, 0.6, sr);
+                sc *= mix(float3(1.0), mix(blue_tint, red_tint, radial_factor), doppler_mix);
 
                 col += sc * b * bright * 0.15;
             }
@@ -141,7 +164,8 @@ fragment float4 fragment_shader_warp(
     col += float3(0.3, 0.4, 0.65) * exp(-dist * 14.0) * gf2 * 0.5;
     col += float3(0.6, 0.65, 0.8) * exp(-dist * 30.0) * gf2 * 0.3;
 
-    col *= smoothstep(2.0, 0.5, dist);
+    float vig_radius = mix(2.0, 1.2, smoothstep(3.0, 10.0, spd));
+    col *= smoothstep(vig_radius, 0.5, dist);
     col = pow(1.0 - exp(-col * 3.5), float3(0.9));
 
     return float4(col, 1.0);
@@ -281,9 +305,14 @@ final class WarpLayer: CAMetalLayer, Background {
   }
 
   private func easeWarpDisengage(_ t: CGFloat) -> CGFloat {
-    let s: CGFloat = 2.5
-    let p = t - 1.0
-    return p * p * ((s + 1.0) * p + s) + 1.0
+    let s: CGFloat = 1.5
+    let t2 = t * 2.0
+    if t2 < 1.0 {
+      return 0.5 * (t2 * t2 * ((s + 1.0) * t2 - s))
+    } else {
+      let p = t2 - 2.0
+      return 0.5 * (p * p * ((s + 1.0) * p + s) + 2.0)
+    }
   }
 
   func update(deltaTime: CGFloat) {
@@ -297,7 +326,7 @@ final class WarpLayer: CAMetalLayer, Background {
         phaseDuration = CGFloat.random(in: 15.0...30.0)
       } else {
         targetSpeed = CGFloat.random(in: 0.05...0.15)
-        phaseDuration = CGFloat.random(in: 3.0...5.0)
+        phaseDuration = CGFloat.random(in: 25.0...45.0)
       }
     }
 

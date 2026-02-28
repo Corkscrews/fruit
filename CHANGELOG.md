@@ -2,8 +2,24 @@
 
 ## [1.3.4]
 
+### Features
+
+ - Added Psychedelic and Liquid background layers with Metal shaders.
+ - Added PuppyLayer with animated Fruit logo tunnel zoom effect.
+ - Added Warp Speed background — the most ambitious and complex rendering in this project. A Metal shader simulating relativistic travel through a star field, featuring:
+   - Relativistic aberration (stars compress toward the center at speed).
+   - Doppler color shift (blueshift forward, redshift at the edges).
+   - Relativistic beaming (center brightens, periphery dims).
+   - Comet-like streak taper with speed-dependent particle motion.
+   - Dynamic tunnel vignette that narrows at warp.
+   - Micro vibrations during acceleration and deceleration.
+   - Back-easing curves with anticipation and overshoot for dramatic speed transitions.
+
 ### Bug Fixes
 
+ - Fixed star artifact in Liquid and Psychedelic Metal shaders.
+ - Fixed Metal layer resolution on resize and WarpLayer scaling.
+ - Fixed release workflow bugs and added missing permissions.
  - Fixed 13 bugs found during code review:
    - Fixed layer leak in `FruitView.setupLayersOrUpdate()` where stale `BackgroundLayer`s accumulated on every mode change.
    - Fixed strong `self` capture in `randomlyChangeFruitType()` animation closure that kept torn-down views alive.
