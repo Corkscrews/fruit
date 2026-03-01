@@ -42,13 +42,13 @@ struct WarpUniforms {
 };
 
 float warp_hash(float2 p) {
-    float3 p3 = fract(float3(p.xyx) * 0.1031);
+    float3 p3 = fract(float3(p.xyx) * float3(0.1031, 0.1030, 0.0973));
     p3 += dot(p3, p3.yzx + 33.33);
     return fract((p3.x + p3.y) * p3.z);
 }
 
 float2 warp_hash2(float2 p) {
-    float3 p3 = fract(float3(p.xyx) * 0.1031);
+    float3 p3 = fract(float3(p.xyx) * float3(0.1031, 0.1030, 0.0973));
     p3 += dot(p3, p3.yzx + 33.33);
     return fract(float2((p3.x + p3.y) * p3.z, (p3.x + p3.z) * p3.y));
 }
@@ -119,6 +119,7 @@ fragment float4 fragment_shader_warp(
                 }
 
                 float b = max(pb, sb) * fade * smoothstep(0.15, 0.8, h1);
+                if (b < 0.0001) continue; // quartic falloff makes distant stars negligible; skip twinkle/color work
 
                 if (!skip_twinkle) {
                     b *= mix(
