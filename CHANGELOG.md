@@ -5,6 +5,12 @@
 ### Features
 
  - Added Psychedelic and Liquid background layers with Metal shaders.
+ - Added Irish Ocean background — a Metal shader simulating a dark, moody North Atlantic ocean featuring:
+   - Rolling wave fronts moving top-to-bottom with natural wobble.
+   - Deep Titanic-style blue palette from near-black troughs to steel-blue crests.
+   - Foam and wind-blown spray on steep wave crests.
+   - Visible surface current swirls via chained FBM domain warping.
+   - Overcast specular glints and atmospheric vignette.
  - Added PuppyLayer with animated Fruit logo tunnel zoom effect.
  - Added Warp Speed background — the most ambitious and complex rendering in this project. A Metal shader simulating relativistic travel through a star field, featuring:
    - Relativistic aberration (stars compress toward the center at speed).

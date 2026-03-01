@@ -399,6 +399,8 @@ final class PreferencesControlsView: NSView {
         return "Puppy"
       case .warp:
         return "Warp Speed"
+      case .ocean:
+        return "Irish Ocean"
       }
     })
     return items

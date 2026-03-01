@@ -14,4 +14,5 @@ public enum FruitType: String, CaseIterable {
   case liquid
   case puppy
   case warp
+  case ocean
 }
