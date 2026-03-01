@@ -207,32 +207,10 @@ final class MetalCircularGradientLayer: CAMetalLayer, Background {
   override init(layer: Any) {
     super.init(layer: layer)
     guard let other = layer as? MetalCircularGradientLayer else { return }
-
-    let device = other.metalDevice ?? MTLCreateSystemDefaultDevice()
-    guard let device = device else { return }
-    self.metalDevice = device
-    self.device = device
-
-    self.pixelFormat = other.pixelFormat != .invalid ? other.pixelFormat : .bgra8Unorm
-    self.framebufferOnly = other.framebufferOnly
-    self.isOpaque = other.isOpaque
-
     self.colorIndex = other.colorIndex
     self.elapsedTime = other.elapsedTime
     self.continuousTotalElapsedTimeForRotation = other.continuousTotalElapsedTimeForRotation
     self.currentFruitMaxDimension = other.currentFruitMaxDimension
-
-    self.commandQueue = device.makeCommandQueue()
-    setupPipeline()
-    createVertexBuffers()
-    createColorLocationBuffer()
-
-    let currentColors = calculateCurrentInterpolatedColors()
-    currentInterpolatedColorsBuffer = device.makeBuffer(
-      bytes: currentColors,
-      length: MemoryLayout<SIMD4<Float>>.stride * colorArray.count,
-      options: .storageModeShared
-    )
   }
 
   private func setupMetal() {
@@ -290,14 +268,18 @@ final class MetalCircularGradientLayer: CAMetalLayer, Background {
     )
   }
 
+  private weak var currentFruit: Fruit?
+
   // MARK: - Background Protocol
   func update(frame: NSRect, fruit: Fruit) {
-    self.frame = frame
+    currentFruit = fruit
+    setFrameAndDrawableSizeWithoutAnimation(frame)
     self.currentFruitMaxDimension = fruit.maxDimen()
     setNeedsDisplay()
   }
 
   func config(fruit: Fruit) {
+    currentFruit = fruit
     self.currentFruitMaxDimension = fruit.maxDimen()
     setNeedsDisplay()
   }
@@ -341,6 +323,20 @@ final class MetalCircularGradientLayer: CAMetalLayer, Background {
     }
 
     configureRenderEncoder(renderEncoder, uniforms: &uniforms)
+    if let fruit = currentFruit {
+      let body = fruit.transformedPath.bounds
+      let leafExtra = fruit.maxDimen() * 0.231
+      let fb = CGRect(x: body.minX - 4, y: body.minY - 4,
+                       width: body.width + 8, height: body.height + 8 + leafExtra)
+      let cs = contentsScale
+      let sx = max(0, Int(fb.minX * cs))
+      let sy = max(0, Int((bounds.height - fb.maxY) * cs))
+      let sw = min(Int(fb.width * cs), texture.width - sx)
+      let sh = min(Int(fb.height * cs), texture.height - sy)
+      if sw > 0 && sh > 0 {
+        renderEncoder.setScissorRect(MTLScissorRect(x: sx, y: sy, width: sw, height: sh))
+      }
+    }
     renderEncoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6)
 
     renderEncoder.endEncoding()

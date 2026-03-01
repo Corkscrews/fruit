@@ -10,9 +10,8 @@ func createPreferencesWindow(preferencesRepository: PreferencesRepository) -> NS
   let window = NSWindow(contentViewController: viewController)
   window.title = "Preferences"
   window.styleMask.insert(.resizable)
-  window.center()
-  window.makeKeyAndOrderFront(nil)
-  viewController.window = window  // Store the window reference
+  window.isReleasedWhenClosed = false
+  viewController.window = window
   return window
 }
 
@@ -392,6 +391,16 @@ final class PreferencesControlsView: NSView {
         return "Linear Gradient"
       case .circularGradient:
         return "Circular Gradient"
+      case .psychedelic:
+        return "Psychedelic"
+      case .liquid:
+        return "Liquid"
+      case .puppy:
+        return "Puppy"
+      case .warp:
+        return "Warp Speed"
+      case .ocean:
+        return "Irish Ocean"
       }
     })
     return items
