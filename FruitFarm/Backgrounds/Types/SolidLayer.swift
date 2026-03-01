@@ -140,14 +140,17 @@ final class MetalSolidLayer: CAMetalLayer, Background {
     )
   }
 
+  private weak var currentFruit: Fruit?
+
   // MARK: - Background Protocol
   func update(frame: NSRect, fruit: Fruit) {
+    currentFruit = fruit
     setFrameAndDrawableSizeWithoutAnimation(frame)
     setNeedsDisplay()
   }
 
   func config(fruit: Fruit) {
-    // Fruit parameter is not used by MetalSolidLayer's appearance
+    currentFruit = fruit
     setNeedsDisplay()
   }
 
@@ -193,10 +196,24 @@ final class MetalSolidLayer: CAMetalLayer, Background {
     }
 
     renderEncoder.setRenderPipelineState(pipelineState)
+    if let fruit = currentFruit {
+      let body = fruit.transformedPath.bounds
+      let leafExtra = fruit.maxDimen() * 0.231
+      let fb = CGRect(x: body.minX - 4, y: body.minY - 4,
+                       width: body.width + 8, height: body.height + 8 + leafExtra)
+      let cs = contentsScale
+      let sx = max(0, Int(fb.minX * cs))
+      let sy = max(0, Int((bounds.height - fb.maxY) * cs))
+      let sw = min(Int(fb.width * cs), texture.width - sx)
+      let sh = min(Int(fb.height * cs), texture.height - sy)
+      if sw > 0 && sh > 0 {
+        renderEncoder.setScissorRect(MTLScissorRect(x: sx, y: sy, width: sw, height: sh))
+      }
+    }
     renderEncoder.setVertexBuffer(vertexBuffer, offset: 0, index: 0)
     renderEncoder.setFragmentBytes(&uniforms, length: MemoryLayout<MetalSolidColorFragmentUniforms>.stride, index: 0)
 
-    renderEncoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6) // Draw a full-screen quad
+    renderEncoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6)
 
     renderEncoder.endEncoding()
     commandBuffer.present(drawable)

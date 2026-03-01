@@ -41,6 +41,15 @@ struct WarpUniforms {
     float vigRadius;
 };
 
+struct WarpLayerData {
+    float scale;
+    float inv_scale;
+    float fade;
+    float inv_ds2;
+    float fi64;
+    float fi27;
+};
+
 float warp_hash(float2 p) {
     float3 p3 = fract(float3(p.xyx) * float3(0.1031, 0.1030, 0.0973));
     p3 += dot(p3, p3.yzx + 33.33);
@@ -55,31 +64,23 @@ float2 warp_hash2(float2 p) {
 
 fragment float4 fragment_shader_warp(
     VertexOut in [[stage_in]],
-    constant WarpUniforms &u [[buffer(0)]]) {
+    constant WarpUniforms &u [[buffer(0)]],
+    constant WarpLayerData *layers [[buffer(1)]]) {
 
     float2 uv = (in.position.xy - u.resolution * 0.5) / u.referenceSize + u.uvOffset;
     float2 warp_uv = uv * u.warpFactor;
 
     bool skip_twinkle = u.twinkleSolid > 0.99;
     float t = u.time;
+    float streak_k = -u.speed * 0.15;
 
     float3 col = float3(0.0);
 
-    constexpr int iter = 20;
-    constexpr float inv_iter = 1.0 / float(iter);
+    for (int i = 0; i < 20; i++) {
+        constant WarpLayerData &ld = layers[i];
+        if (ld.fade < 0.001) continue;
 
-    for (int i = 0; i < iter; i++) {
-        float fi = float(i);
-        float z = fract(fi * inv_iter + u.tScroll + warp_hash(float2(fi, fi * 0.7)) * 0.05);
-        float scale = mix(18.0, 0.8, z);
-        float inv_scale = 1.0 / scale;
-        float fade = smoothstep(0.0, 0.1, z) * smoothstep(1.0, 0.8, z);
-        float ds = 0.0018 + 0.0006 * z;
-        float inv_ds2 = 1.0 / (ds * ds);
-        float fi64 = fi * 64.0;
-        float fi27 = fi * 27.0;
-
-        float2 st = warp_uv * scale;
+        float2 st = warp_uv * ld.scale;
         float2 gid = floor(st);
 
         for (int dy = -1; dy <= 1; dy++) {
@@ -87,27 +88,24 @@ fragment float4 fragment_shader_warp(
                 float2 off = float2(float(dx), float(dy));
                 float2 id = gid + off;
 
-                float h1 = warp_hash(id + fi64);
+                float h1 = warp_hash(id + ld.fi64);
                 if (h1 < u.cull) continue;
 
-                float2 sp = warp_hash2(id * 3.14 + fi27) - 0.5;
+                float2 sp = warp_hash2(id * 3.14 + ld.fi27) - 0.5;
 
-                float2 ss = (id + sp + 0.5) * inv_scale;
+                float2 ss = (id + sp + 0.5) * ld.inv_scale;
                 float2 delta = warp_uv - ss;
 
                 float sr2 = dot(ss, ss);
                 float dd2 = dot(delta, delta);
 
-                float ratio = dd2 * inv_ds2;
+                float ratio = dd2 * ld.inv_ds2;
                 float pb = 1.0 / (1.0 + ratio * ratio);
-
-                float inv_sr = rsqrt(max(sr2, 1e-6));
-                float sr = sr2 * inv_sr;
 
                 float sb = 0.0;
                 if (u.streakMix > 0.01) {
-                    float slen = u.speed * sr * 0.15;
-                    float2 sba = ss * (-inv_sr * slen);
+                    // inv_sr * sr cancels to 1, so sba = ss * (-speed * 0.15)
+                    float2 sba = ss * streak_k;
                     float sba2 = dot(sba, sba);
                     float tp = sba2 > 0.0001
                         ? clamp(dot(delta, sba) / sba2, 0.0, 1.0) : 0.0;
@@ -118,8 +116,11 @@ fragment float4 fragment_shader_warp(
                        / (1.0 + sratio * sratio);
                 }
 
-                float b = max(pb, sb) * fade * smoothstep(0.15, 0.8, h1);
-                if (b < 0.0001) continue; // quartic falloff makes distant stars negligible; skip twinkle/color work
+                float b = max(pb, sb) * ld.fade * smoothstep(0.15, 0.8, h1);
+                if (b < 0.0001) continue; // quartic falloff makes distant stars negligible
+
+                float inv_sr = rsqrt(max(sr2, 1e-6));
+                float sr = sr2 * inv_sr;
 
                 if (!skip_twinkle) {
                     b *= mix(
@@ -188,6 +189,15 @@ private struct MetalWarpFragmentUniforms {
   var vigRadius: Float
 }
 
+private struct MetalWarpLayerData {
+  var scale: Float
+  var inv_scale: Float
+  var fade: Float
+  var inv_ds2: Float
+  var fi64: Float
+  var fi27: Float
+}
+
 // swiftlint:disable:next type_body_length
 final class WarpLayer: CAMetalLayer, Background {
 
@@ -201,6 +211,9 @@ final class WarpLayer: CAMetalLayer, Background {
   private var totalElapsedTime: CGFloat = 0
   private var lastUpdateTime: CGFloat = 0
   private let minUpdateInterval: CGFloat = 1.0 / 30.0
+
+  // MARK: - Rendering Area
+  private weak var currentFruit: Fruit?
 
   // MARK: - Speed Variation
   private var currentSpeed: CGFloat = 0.1
@@ -294,11 +307,13 @@ final class WarpLayer: CAMetalLayer, Background {
 
   // MARK: - Background Protocol
   func update(frame: NSRect, fruit: Fruit) {
+    currentFruit = fruit
     setFrameAndDrawableSizeWithoutAnimation(frame)
     setNeedsDisplay()
   }
 
   func config(fruit: Fruit) {
+    currentFruit = fruit
     setNeedsDisplay()
   }
 
@@ -307,10 +322,9 @@ final class WarpLayer: CAMetalLayer, Background {
     let t2 = t * 2.0
     if t2 < 1.0 {
       return 0.5 * (t2 * t2 * ((s + 1.0) * t2 - s))
-    } else {
-      let p = t2 - 2.0
-      return 0.5 * (p * p * ((s + 1.0) * p + s) + 2.0)
     }
+    let p = t2 - 2.0
+    return 0.5 * (p * p * ((s + 1.0) * p + s) + 2.0)
   }
 
   private func easeWarpDisengage(_ t: CGFloat) -> CGFloat {
@@ -318,10 +332,9 @@ final class WarpLayer: CAMetalLayer, Background {
     let t2 = t * 2.0
     if t2 < 1.0 {
       return 0.5 * (t2 * t2 * ((s + 1.0) * t2 - s))
-    } else {
-      let p = t2 - 2.0
-      return 0.5 * (p * p * ((s + 1.0) * p + s) + 2.0)
     }
+    let p = t2 - 2.0
+    return 0.5 * (p * p * ((s + 1.0) * p + s) + 2.0)
   }
 
   func update(deltaTime: CGFloat) {
@@ -355,6 +368,20 @@ final class WarpLayer: CAMetalLayer, Background {
   private static func glslSmoothstep(_ edge0: Float, _ edge1: Float, _ x: Float) -> Float {
     let t = min(max((x - edge0) / (edge1 - edge0), 0), 1)
     return t * t * (3 - 2 * t)
+  }
+
+  private static func glslFract(_ x: Float) -> Float {
+    return x - floor(x)
+  }
+
+  private static func warpHash(_ p: SIMD2<Float>) -> Float {
+    let px = p.x, py = p.y
+    var p3x = glslFract(px * 0.1031)
+    var p3y = glslFract(py * 0.1030)
+    var p3z = glslFract(px * 0.0973)
+    let d = p3x * (p3y + 33.33) + p3y * (p3z + 33.33) + p3z * (p3x + 33.33)
+    p3x += d; p3y += d; p3z += d
+    return glslFract((p3x + p3y) * p3z)
   }
 
   // MARK: - Drawing
@@ -398,6 +425,26 @@ final class WarpLayer: CAMetalLayer, Background {
       vigRadius: 2.0 + (1.2 - 2.0) * ss(3.0, 10.0, spd)
     )
 
+    var layerData = [MetalWarpLayerData]()
+    layerData.reserveCapacity(20)
+    for i in 0..<20 {
+      let fi = Float(i)
+      let z = Self.glslFract(
+        fi / 20.0 + uniforms.tScroll + Self.warpHash(SIMD2<Float>(fi, fi * 0.7)) * 0.05
+      )
+      let scale = 18.0 + (0.8 - 18.0) * z
+      let fade = ss(0.0, 0.1, z) * ss(1.0, 0.8, z)
+      let ds: Float = 0.0018 + 0.0006 * z
+      layerData.append(MetalWarpLayerData(
+        scale: scale,
+        inv_scale: 1.0 / scale,
+        fade: fade,
+        inv_ds2: 1.0 / (ds * ds),
+        fi64: fi * 64.0,
+        fi27: fi * 27.0
+      ))
+    }
+
     let renderPassDescriptor = MTLRenderPassDescriptor()
     renderPassDescriptor.colorAttachments[0].texture = texture
     renderPassDescriptor.colorAttachments[0].loadAction = .clear
@@ -413,12 +460,33 @@ final class WarpLayer: CAMetalLayer, Background {
     }
 
     renderEncoder.setRenderPipelineState(pipelineState)
+    if let fruit = currentFruit {
+      let body = fruit.transformedPath.bounds
+      let leafExtra = fruit.maxDimen() * 0.231
+      let fb = CGRect(x: body.minX - 4, y: body.minY - 4,
+                       width: body.width + 8, height: body.height + 8 + leafExtra)
+      let cs = contentsScale
+      let sx = max(0, Int(fb.minX * cs))
+      let sy = max(0, Int((bounds.height - fb.maxY) * cs))
+      let sw = min(Int(fb.width * cs), Int(resW) - sx)
+      let sh = min(Int(fb.height * cs), Int(resH) - sy)
+      if sw > 0 && sh > 0 {
+        renderEncoder.setScissorRect(MTLScissorRect(x: sx, y: sy, width: sw, height: sh))
+      }
+    }
     renderEncoder.setVertexBuffer(vertexBuffer, offset: 0, index: 0)
     renderEncoder.setFragmentBytes(
       &uniforms,
       length: MemoryLayout<MetalWarpFragmentUniforms>.stride,
       index: 0
     )
+    layerData.withUnsafeBytes { ptr in
+      renderEncoder.setFragmentBytes(
+        ptr.baseAddress!,
+        length: ptr.count,
+        index: 1
+      )
+    }
     renderEncoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6)
 
     renderEncoder.endEncoding()
