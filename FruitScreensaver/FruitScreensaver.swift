@@ -8,6 +8,7 @@ final class FruitScreensaver: ScreenSaverView {
 
   private enum Constant {
     static let secondPerFrame = 1.0 / 60.0
+    static let showDebugStats = true
   }
 
   // MARK: Views
@@ -20,6 +21,11 @@ final class FruitScreensaver: ScreenSaverView {
   private var lastFrameTime: TimeInterval?
   private var lastFps: Int = 60
   private var isPaused: Bool = false
+
+  // MARK: Debug
+
+  private var debugStatsView: DebugStatsView?
+  private var lastDebugUpdateTime: TimeInterval = 0
 
   // MARK: Preferences
 
@@ -43,6 +49,9 @@ final class FruitScreensaver: ScreenSaverView {
       addScreenDidChangeNotification()
     }
     addObserverWillStopNotification()
+    if Constant.showDebugStats {
+      setupDebugView()
+    }
   }
 
   required init?(coder decoder: NSCoder) {
@@ -54,6 +63,9 @@ final class FruitScreensaver: ScreenSaverView {
       addScreenDidChangeNotification()
     }
     addObserverWillStopNotification()
+    if Constant.showDebugStats {
+      setupDebugView()
+    }
   }
 
   private func setupFruitView(isPreview: Bool) {
@@ -87,10 +99,30 @@ final class FruitScreensaver: ScreenSaverView {
     self.addSubview(metalView!)
   }
 
+  private func setupDebugView() {
+    let debugView = DebugStatsView(frame: .zero)
+    self.addSubview(debugView)
+    debugStatsView = debugView
+    debugView.update(fps: 60)
+    positionDebugView()
+  }
+
+  private func positionDebugView() {
+    guard let debugView = debugStatsView else { return }
+    let margin: CGFloat = 12
+    debugView.frame.origin = CGPoint(
+      x: margin,
+      y: bounds.height - debugView.frame.height - margin
+    )
+  }
+
   override func layout() {
     super.layout()
     fruitView.frame = self.bounds
     metalView?.frame = self.bounds
+    if Constant.showDebugStats {
+      positionDebugView()
+    }
   }
 
   override func viewDidMoveToWindow() {
@@ -108,9 +140,16 @@ final class FruitScreensaver: ScreenSaverView {
 
   override func animateOneFrame() {
     super.animateOneFrame()
-    // Skip animation if paused to save CPU
     guard !isPaused else { return }
     fruitView.animateOneFrame(framesPerSecond: calculateFps())
+    if Constant.showDebugStats {
+      let now = CACurrentMediaTime()
+      if now - lastDebugUpdateTime >= 0.5 {
+        lastDebugUpdateTime = now
+        debugStatsView?.update(fps: lastFps)
+        positionDebugView()
+      }
+    }
   }
 
   private func calculateFps() -> Int {

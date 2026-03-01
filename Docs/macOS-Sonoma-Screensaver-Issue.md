@@ -193,7 +193,45 @@ activation will create a new `ScreenSaverView` while the old one is still
 animating. This is confirmed as a major ongoing bug (FB19204084).
 
 A more robust approach is to broadcast a local notification from each new
-instance and have older instances mark themselves as lame-duck:
+instance and have older instances mark themselves as lame-duck. However, the
+naive version of this pattern **breaks multiscreen support**.
+
+##### Multiscreen caveat
+
+macOS creates one `ScreenSaverView` instance per screen. On a dual-monitor
+setup, two `FruitScreensaver` instances are created in rapid succession inside
+the same `legacyScreenSaver.appex` process. A naive lame-duck pattern that
+neuters any instance that is not `self` cannot distinguish between:
+
+- A **zombie instance** from a previous activation (should be neutered)
+- A **sibling instance** for a different screen in the same activation (should
+  NOT be neutered)
+
+The following naive implementation would cause only the last screen to render,
+leaving all other screens black:
+
+```swift
+// WARNING: Breaks multiscreen -- do NOT use as-is.
+@objc func neuter(_ notification: Notification) {
+  guard notification.object as? FruitScreensaver !== self else { return }
+  lameDuck = true
+  // ...
+}
+```
+
+On a 2-monitor setup the sequence is:
+
+1. Screen 1 instance created, posts notification -- no observers yet.
+2. Screen 1 subscribes.
+3. Screen 2 instance created, posts notification.
+4. Screen 1 observer fires (`object !== self`), **neuters screen 1**.
+5. Only screen 2 survives.
+
+##### Multiscreen-safe lame-duck via window identity
+
+Each `ScreenSaverView` is placed in a separate window for its screen. The fix
+is to only neuter a previous instance if the new one shares the **same
+window** -- meaning macOS replaced the view on the same screen:
 
 ```swift
 static let newInstanceNotification = Notification.Name("com.fruit.NewInstance")
@@ -212,7 +250,9 @@ private func setup() {
 }
 
 @objc func neuter(_ notification: Notification) {
-  guard notification.object as? FruitScreensaver !== self else { return }
+  guard let other = notification.object as? FruitScreensaver,
+        other !== self,
+        other.window == self.window else { return }
   lameDuck = true
   isPaused = true
   metalView?.isRenderingPaused = true
@@ -221,6 +261,10 @@ private func setup() {
   DistributedNotificationCenter.default.removeObserver(self)
 }
 ```
+
+Two instances on different screens coexist, but if macOS creates a new
+instance for the same screen (the zombie-stacking bug), the old one is
+correctly neutered.
 
 Then guard in `animateOneFrame`:
 
@@ -367,7 +411,7 @@ override func display() {
 |----------|-------|-----|
 | **Critical** | `isPreview` always `true` on Sonoma | Detect real state from frame size |
 | **Critical** | Immediate `terminate` race condition | Use `exit(0)` with 2s delay |
-| **High** | No multi-instance handling | Lame-duck pattern via local notification |
+| **High** | No multi-instance handling | Lame-duck pattern via window identity (naive version breaks multiscreen) |
 | **High** | Preferences never refreshed | Re-read in `startAnimation`, call `synchronize()` |
 | **Medium** | Missing `startAnimation`/`stopAnimation` | Override both for lifecycle management |
 | **Medium** | `fatalError` in Metal setup | Graceful fallback to `RainbowsLayer` |

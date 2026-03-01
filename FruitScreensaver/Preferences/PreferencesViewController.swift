@@ -91,6 +91,10 @@ final class PreferencesViewController: NSViewController, NSTableViewDataSource, 
   /// Display link for synchronizing animation with screen refresh rate.
   private var displayLink: CVDisplayLink?
 
+  private let showDebugStats = true
+  private var debugStatsView: DebugStatsView?
+  private var lastDebugUpdateTime: TimeInterval = 0
+
   deinit {
     stopDisplayLink()
     NotificationCenter.default.removeObserver(self)
@@ -112,6 +116,9 @@ final class PreferencesViewController: NSViewController, NSTableViewDataSource, 
     addSubviews()
     configConstraints()
     setupDisplayLink()
+    if showDebugStats {
+      setupDebugView()
+    }
   }
 
   /// Configures the main view with a black background.
@@ -144,6 +151,23 @@ final class PreferencesViewController: NSViewController, NSTableViewDataSource, 
     ])
   }
 
+  private func setupDebugView() {
+    let debugView = DebugStatsView(frame: .zero)
+    self.view.addSubview(debugView)
+    debugStatsView = debugView
+    debugView.update(fps: 60)
+    positionDebugView()
+  }
+
+  private func positionDebugView() {
+    guard let debugView = debugStatsView else { return }
+    let margin: CGFloat = 12
+    debugView.frame.origin = CGPoint(
+      x: margin,
+      y: view.bounds.height - debugView.frame.height - margin
+    )
+  }
+
   /// Called after the view is loaded.
   /// Sets up the initial frame for the fruit view.
   override func viewDidLoad() {
@@ -157,6 +181,9 @@ final class PreferencesViewController: NSViewController, NSTableViewDataSource, 
     super.viewDidLayout()
     fruitView.frame = self.view.bounds
     metalView.frame = self.view.bounds
+    if showDebugStats {
+      positionDebugView()
+    }
   }
 
   // MARK: - Display Link
@@ -206,11 +233,22 @@ final class PreferencesViewController: NSViewController, NSTableViewDataSource, 
 
       DispatchQueue.main.async { [weak controller] in
         controller?.fruitView.animateOneFrame(framesPerSecond: fps)
+        controller?.updateDebugStatsIfNeeded(fps: fps)
       }
       return kCVReturnSuccess
     }, Unmanaged.passUnretained(context).toOpaque())
 
     CVDisplayLinkStart(displayLink)
+  }
+
+  private func updateDebugStatsIfNeeded(fps: Int) {
+    guard showDebugStats else { return }
+    let now = CACurrentMediaTime()
+    if now - lastDebugUpdateTime >= 0.5 {
+      lastDebugUpdateTime = now
+      debugStatsView?.update(fps: fps)
+      positionDebugView()
+    }
   }
 
   // MARK: - EDR

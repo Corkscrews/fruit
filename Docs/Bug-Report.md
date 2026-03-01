@@ -6,7 +6,7 @@ Code review of the Fruit screensaver codebase. Findings are grouped by severity.
 
 ## Critical
 
-### 1. Layer leak in `FruitView.setupLayersOrUpdate()` -- FIXED
+### 1. Layer leak in `FruitView.setupLayersOrUpdate()`
 
 **File:** `FruitFarm/FruitView.swift`
 

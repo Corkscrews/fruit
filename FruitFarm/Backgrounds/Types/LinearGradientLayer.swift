@@ -200,6 +200,12 @@ final class MetalLinearGradientLayer: CAMetalLayer, Background {
   override init(layer: Any) {
     super.init(layer: layer)
     guard let other = layer as? MetalLinearGradientLayer else { return }
+    self.metalDevice = other.metalDevice
+    self.commandQueue = other.commandQueue
+    self.pipelineState = other.pipelineState
+    self.vertexBuffer = other.vertexBuffer
+    self.currentInterpolatedColorsBuffer = other.currentInterpolatedColorsBuffer
+    self.gradientLocationsBuffer = other.gradientLocationsBuffer
     self.colorIndex = other.colorIndex
     self.elapsedTime = other.elapsedTime
   }

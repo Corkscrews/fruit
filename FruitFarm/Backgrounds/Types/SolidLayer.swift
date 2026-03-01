@@ -95,6 +95,10 @@ final class MetalSolidLayer: CAMetalLayer, Background {
   override init(layer: Any) {
     super.init(layer: layer)
     guard let other = layer as? MetalSolidLayer else { return }
+    self.metalDevice = other.metalDevice
+    self.commandQueue = other.commandQueue
+    self.pipelineState = other.pipelineState
+    self.vertexBuffer = other.vertexBuffer
     self.colorIndex = other.colorIndex
     self.elapsedTime = other.elapsedTime
   }
