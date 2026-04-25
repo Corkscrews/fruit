@@ -12,37 +12,38 @@ jobs:
       image: ghcr.io/realm/swiftlint:latest
 
     steps:
-    - uses: actions/checkout@v4
-      with:
-        fetch-depth: 1
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
 
-    - name: 🧹 SwiftLint
-      run: swiftlint --reporter github-actions-logging --strict
+      - name: 🧹 SwiftLint
+        run: swiftlint --reporter github-actions-logging --strict
 
   build:
     name: 🏗️ Build
     runs-on: macos-14
 
     steps:
-    - uses: actions/checkout@v4
-      with:
-        fetch-depth: 1
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
 
-    - name: 🛠️ Set up Xcode
-      uses: maxim-lobanov/setup-xcode@v1
-      with:
-        xcode-version: latest
+      - name: 🛠️ Set up Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest
 
-    - name: 💾 Cache DerivedData
-      uses: actions/cache@v4
-      with:
-        path: ~/Library/Developer/Xcode/DerivedData
-        key: ${{ runner.os }}-xcode-deriveddata-${{ hashFiles('**/*.pbxproj', '**/*.swift') }}
-        restore-keys: |
-          ${{ runner.os }}-xcode-deriveddata-
+      - name: 💾 Cache DerivedData
+        uses: actions/cache@v5
+        with:
+          path: ~/Library/Developer/Xcode/DerivedData
+          key: ${{ runner.os }}-xcode-deriveddata-${{ hashFiles('**/*.pbxproj',
+            '**/*.swift') }}
+          restore-keys: |
+            ${{ runner.os }}-xcode-deriveddata-
 
-    - name: 🏗️ Build Fruit.saver
-      run: xcodebuild -scheme Fruit -configuration Debug build | tail -20
+      - name: 🏗️ Build Fruit.saver
+        run: xcodebuild -scheme Fruit -configuration Debug build | tail -20
 
-    - name: 🏗️ Build FruitShop
-      run: xcodebuild -scheme FruitShop -configuration Debug build | tail -20
+      - name: 🏗️ Build FruitShop
+        run: xcodebuild -scheme FruitShop -configuration Debug build | tail -20
