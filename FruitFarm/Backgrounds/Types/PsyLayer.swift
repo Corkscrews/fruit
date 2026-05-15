@@ -27,6 +27,7 @@ struct PsyUniforms {
     float2 resolution;
     float time;
     float color_phase;
+    float referenceSize;
 };
 
 float3 hsv2rgb(float3 c) {
@@ -56,10 +57,12 @@ fragment float4 fragment_shader_psy(
     VertexOut in [[stage_in]],
     constant PsyUniforms &uniforms [[buffer(0)]]) {
 
-    float2 uv = (in.position.xy * 2.0 - uniforms.resolution) /
-                 min(uniforms.resolution.x, uniforms.resolution.y);
+    float2 vigUV = (in.position.xy * 2.0 - uniforms.resolution) /
+                    min(uniforms.resolution.x, uniforms.resolution.y);
+    float origR = length(vigUV);
+
+    float2 uv = (in.position.xy - uniforms.resolution * 0.5) / uniforms.referenceSize;
     float t = uniforms.time;
-    float origR = length(uv);
 
     // Heavy domain warping - high amplitude, fast
     float2 p = uv;
@@ -144,6 +147,7 @@ private struct MetalPsyFragmentUniforms {
   var time: Float
   // swiftlint:disable:next identifier_name
   var color_phase: Float
+  var referenceSize: Float
 }
 
 // swiftlint:disable:next type_body_length
@@ -311,10 +315,13 @@ final class PsyLayer: CAMetalLayer, Background {
           let drawable = nextDrawable() else { return }
     let texture = drawable.texture
 
+    let referenceSize: Float = 200.0 * Float(contentsScale)
+
     var uniforms = MetalPsyFragmentUniforms(
       resolution: SIMD2<Float>(Float(texture.width), Float(texture.height)),
       time: Float(totalElapsedTime),
-      color_phase: Float(colorPhase)
+      color_phase: Float(colorPhase),
+      referenceSize: referenceSize
     )
 
     let renderPassDescriptor = MTLRenderPassDescriptor()

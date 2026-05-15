@@ -67,13 +67,23 @@ If the screenshot displays a black screen, you need to do some actions to get it
 6. Quit **System Settings**.
 7. Install your new screen saver and perform the dialog dance.
 
+### Screensaver not updating after install?
+
+macOS caches the screensaver binary in `legacyScreenSaver.appex` and (on Sequoia) in `WallpaperAgent`. Copying a new `.saver` over the old one does **not** work — `cp -R` merges directories and the stale binary persists, even across reboots. Use the build script with `--install` to handle this automatically:
+
+```bash
+bash .github/scripts/build.sh --install
+```
+
+Or do it manually: kill `legacyScreenSaver`, **rm -rf** the old bundle, copy the new one, strip quarantine. See [Docs/macOS-Screensaver-Install-Cache-Bug.md](Docs/macOS-Screensaver-Install-Cache-Bug.md) for full details.
+
 ### Still not working?
 
 The Fruit screen saver can be blocked by the system as a malicious software. Sometimes on macOS Big Sur clicking `Open Anyway` in `Security & Privacy` is not fixing the issue.  
 
-To bypass this quarantine made by 🍎, you can use this command in your terminal :
+To bypass this quarantine made by 🍎, you can use this command in your terminal:
 
-```shellxc
+```bash
 sudo xattr -d com.apple.quarantine ~/"Library/Screen Savers/Fruit.saver"
 ```
 

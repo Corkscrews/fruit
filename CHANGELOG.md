@@ -23,6 +23,8 @@
 
 ### Bug Fixes
 
+ - Fixed screensaver install cache bug where macOS continues running the old binary after replacement. `cp -R` merges directories instead of replacing them, leaving stale binaries behind. `legacyScreenSaver.appex` and `WallpaperAgent` further cache the loaded bundle in memory and across reboots. The build script now supports `--install` to handle the full replacement sequence automatically.
+ - Added debug stats overlay (FPS, CPU, GPU) to FruitScreensaver and PreferencesViewController, gated behind a `showDebugStats` toggle.
  - Fixed star artifact in Liquid and Psychedelic Metal shaders.
  - Fixed Metal layer resolution on resize and WarpLayer scaling.
  - Fixed release workflow bugs and added missing permissions.

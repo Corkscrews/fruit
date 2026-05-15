@@ -66,6 +66,7 @@
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				DebugStatsView.swift,
+				DisplayLinkAnimator.swift,
 				FruitScreensaver.swift,
 				Info.plist,
 				Media.xcassets,
@@ -78,6 +79,7 @@
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				DebugStatsView.swift,
+				DisplayLinkAnimator.swift,
 				Preferences/PreferencesRepository.swift,
 				Preferences/PreferencesViewController.swift,
 			);

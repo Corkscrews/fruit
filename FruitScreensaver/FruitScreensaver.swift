@@ -4,13 +4,6 @@ import FruitFarm
 // MARK: - FruitView
 final class FruitScreensaver: ScreenSaverView {
 
-  // MARK: Constant
-
-  private enum Constant {
-    static let secondPerFrame = 1.0 / 60.0
-    static let showDebugStats = true
-  }
-
   // MARK: Views
 
   private var fruitView: FruitView!
@@ -18,8 +11,7 @@ final class FruitScreensaver: ScreenSaverView {
 
   // MARK: Frame control
 
-  private var lastFrameTime: TimeInterval?
-  private var lastFps: Int = 60
+  private let displayLinkAnimator = DisplayLinkAnimator()
   private var isPaused: Bool = false
 
   // MARK: Debug
@@ -35,35 +27,32 @@ final class FruitScreensaver: ScreenSaverView {
   )
 
   deinit {
-    // Remove notification observers to prevent memory leaks
+    displayLinkAnimator.stop()
     NotificationCenter.default.removeObserver(self)
     DistributedNotificationCenter.default.removeObserver(self)
   }
 
   override init?(frame: NSRect, isPreview: Bool) {
     super.init(frame: frame, isPreview: isPreview)
-    animationTimeInterval = Constant.secondPerFrame
-    setupFruitView(isPreview: isPreview)
-    if !isPreview {
-      setupMetalView()
-      addScreenDidChangeNotification()
-    }
-    addObserverWillStopNotification()
-    if Constant.showDebugStats {
-      setupDebugView()
-    }
+    animationTimeInterval = .infinity
+    commonInit(isPreview: isPreview)
   }
 
   required init?(coder decoder: NSCoder) {
     super.init(coder: decoder)
-    animationTimeInterval = Constant.secondPerFrame
-    setupFruitView(isPreview: false)
+    animationTimeInterval = .infinity
+    commonInit(isPreview: isPreview)
+  }
+
+  private func commonInit(isPreview: Bool) {
+    setupFruitView(isPreview: isPreview)
+    setupDisplayLinkAnimator()
     if !isPreview {
       setupMetalView()
       addScreenDidChangeNotification()
     }
     addObserverWillStopNotification()
-    if Constant.showDebugStats {
+    if DebugStatsView.isEnabled {
       setupDebugView()
     }
   }
@@ -76,6 +65,15 @@ final class FruitScreensaver: ScreenSaverView {
     fruitView.autoresizingMask = [.width, .height]
     fruitView.update(mode: preferencesRepository.defaultFruitMode())
     self.addSubview(fruitView)
+  }
+
+  private func setupDisplayLinkAnimator() {
+    displayLinkAnimator.onFrame = { [weak self] fps in
+      guard let self = self, !self.isPaused else { return }
+      self.fruitView.animateOneFrame(framesPerSecond: fps)
+      self.updateDebugStatsIfNeeded(fps: fps)
+    }
+    displayLinkAnimator.start(on: window?.screen)
   }
 
   private func setupMetalView() {
@@ -120,50 +118,36 @@ final class FruitScreensaver: ScreenSaverView {
     super.layout()
     fruitView.frame = self.bounds
     metalView?.frame = self.bounds
-    if Constant.showDebugStats {
+    if DebugStatsView.isEnabled {
       positionDebugView()
     }
   }
 
   override func viewDidMoveToWindow() {
     super.viewDidMoveToWindow()
-    // Pause animations when view is removed from window hierarchy
     if window == nil {
       isPaused = true
       metalView?.isRenderingPaused = true
+      displayLinkAnimator.stop()
     } else {
-      // Resume animations when added to window
       isPaused = false
       metalView?.isRenderingPaused = false
+      displayLinkAnimator.start(on: window?.screen)
     }
   }
 
   override func animateOneFrame() {
-    super.animateOneFrame()
-    guard !isPaused else { return }
-    fruitView.animateOneFrame(framesPerSecond: calculateFps())
-    if Constant.showDebugStats {
-      let now = CACurrentMediaTime()
-      if now - lastDebugUpdateTime >= 0.5 {
-        lastDebugUpdateTime = now
-        debugStatsView?.update(fps: lastFps)
-        positionDebugView()
-      }
-    }
+    // No-op: rendering is driven by DisplayLinkAnimator at vsync rate.
   }
 
-  private func calculateFps() -> Int {
-    let currentTime = CACurrentMediaTime()
-    var fps = lastFps
-    if let lastTime = lastFrameTime {
-      let delta = currentTime - lastTime
-      if delta > 0 {
-        fps = Int(round(1.0 / delta))
-        lastFps = fps
-      }
+  private func updateDebugStatsIfNeeded(fps: Int) {
+    guard DebugStatsView.isEnabled else { return }
+    let now = CACurrentMediaTime()
+    if now - lastDebugUpdateTime >= 0.5 {
+      lastDebugUpdateTime = now
+      debugStatsView?.update(fps: fps)
+      positionDebugView()
     }
-    lastFrameTime = currentTime
-    return fps
   }
 
   private func addObserverWillStopNotification() {
@@ -177,9 +161,9 @@ final class FruitScreensaver: ScreenSaverView {
 
   @objc
   private func willStop(_ aNotification: Notification) {
-    // Pause all animations to reduce CPU during shutdown
     isPaused = true
     metalView?.isRenderingPaused = true
+    displayLinkAnimator.stop()
 
     if !isPreview {
       NSApplication.shared.terminate(nil)
@@ -188,16 +172,20 @@ final class FruitScreensaver: ScreenSaverView {
 
   private func addScreenDidChangeNotification() {
     checkEDR()
-    // Only observe screen changes for this specific window
-    // Passing nil would observe ALL windows, causing excessive callbacks
     if let window = window {
       NotificationCenter.default.addObserver(
         self,
-        selector: #selector(checkEDR),
+        selector: #selector(screenDidChange),
         name: NSWindow.didChangeScreenNotification,
         object: window
       )
     }
+  }
+
+  @objc
+  private func screenDidChange() {
+    checkEDR()
+    displayLinkAnimator.start(on: window?.screen)
   }
 
   @objc
