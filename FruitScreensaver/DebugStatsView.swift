@@ -3,7 +3,7 @@ import IOKit
 
 final class DebugStatsView: NSView {
 
-  static let isEnabled = true
+  static let isEnabled = false
 
   private let textFont = NSFont.monospacedSystemFont(ofSize: 11, weight: .medium)
   private let padding: CGFloat = 8
