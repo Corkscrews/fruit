@@ -384,6 +384,8 @@ final class PreferencesControlsView: NSView {
         return "Circular Gradient"
       case .psychedelic:
         return "Psychedelic"
+      case .california:
+        return "California"
       case .liquid:
         return "Liquid"
       case .puppy:
@@ -392,6 +394,14 @@ final class PreferencesControlsView: NSView {
         return "Warp Speed"
       case .ocean:
         return "Irish Ocean"
+      case .glass:
+        return "Glass"
+      case .metallic:
+        return "Metallic"
+      case .pogo:
+        return "POGO"
+      case .glue:
+        return "Glue"
       }
     })
     return items

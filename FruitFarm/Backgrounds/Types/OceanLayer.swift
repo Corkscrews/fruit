@@ -28,137 +28,253 @@ struct OceanUniforms {
     float time;
 };
 
+constant int OCEAN_NUM_STEPS = 32;
+constant int OCEAN_ITER_GEOMETRY = 3;
+constant int OCEAN_ITER_FRAGMENT = 5;
+constant float OCEAN_EPSILON = 0.001;
+constant float OCEAN_HEIGHT = 0.6;
+constant float OCEAN_CHOPPY = 4.0;
+constant float OCEAN_SPEED = 0.8;
+constant float OCEAN_FREQ = 0.16;
+constant float OCEAN_CONTRAST = 1.22;
+constant float OCEAN_CAMERA_TIME_SCALE = 0.08;
+constant float OCEAN_BUBBLE_STRENGTH = 0.38;
+constant float3 OCEAN_BASE = float3(0.0, 0.09, 0.18);
+constant float3 OCEAN_WATER_COLOR = float3(0.48, 0.54, 0.36);
+
+float3x3 ocean_from_euler(float3 ang) {
+    float2 a1 = float2(sin(ang.x), cos(ang.x));
+    float2 a2 = float2(sin(ang.y), cos(ang.y));
+    float2 a3 = float2(sin(ang.z), cos(ang.z));
+
+    return float3x3(
+        float3(a1.y * a3.y + a1.x * a2.x * a3.x,
+               a1.y * a2.x * a3.x + a3.y * a1.x,
+              -a2.y * a3.x),
+        float3(-a2.y * a1.x,
+                a1.y * a2.y,
+                a2.x),
+        float3(a3.y * a1.x * a2.x + a1.y * a3.x,
+               a1.x * a3.x - a1.y * a3.y * a2.x,
+               a2.y * a3.y)
+    );
+}
+
 float ocean_hash(float2 p) {
-    float3 p3 = fract(float3(p.xyx) * float3(0.1031, 0.1030, 0.0973));
-    p3 += dot(p3, p3.yzx + 33.33);
-    return fract((p3.x + p3.y) * p3.z);
+    float h = dot(p, float2(127.1, 311.7));
+    return fract(sin(h) * 43758.5453123);
 }
 
 float ocean_noise(float2 p) {
     float2 i = floor(p);
     float2 f = fract(p);
     float2 u = f * f * (3.0 - 2.0 * f);
-    return mix(
-        mix(ocean_hash(i), ocean_hash(i + float2(1.0, 0.0)), u.x),
+
+    float v = mix(
+        mix(ocean_hash(i + float2(0.0, 0.0)), ocean_hash(i + float2(1.0, 0.0)), u.x),
         mix(ocean_hash(i + float2(0.0, 1.0)), ocean_hash(i + float2(1.0, 1.0)), u.x),
         u.y
     );
+    return -1.0 + 2.0 * v;
 }
 
-float ocean_fbm(float2 p, int octaves) {
-    float v = 0.0;
-    float a = 0.5;
-    float2x2 rot = float2x2(0.8, 0.6, -0.6, 0.8);
-    for (int i = 0; i < octaves; i++) {
-        v += a * ocean_noise(p);
-        p = rot * p * 2.01;
-        a *= 0.49;
+float ocean_diffuse(float3 n, float3 l, float p) {
+    return pow(dot(n, l) * 0.4 + 0.6, p);
+}
+
+float ocean_specular(float3 n, float3 l, float3 eye, float s) {
+    float nrm = (s + 8.0) / (3.14159265 * 8.0);
+    return pow(max(dot(reflect(eye, n), l), 0.0), s) * nrm;
+}
+
+float3 ocean_sky_color(float3 eye) {
+    eye.y = max(eye.y, 0.0);
+    float horizon = 1.0 - eye.y;
+    return float3(
+        pow(horizon, 2.0),
+        horizon,
+        0.6 + horizon * 0.4
+    );
+}
+
+float ocean_octave(float2 uv, float choppy) {
+    uv += float2(ocean_noise(uv));
+    float2 wave = float2(1.0) - abs(sin(uv));
+    float2 swell = abs(cos(uv));
+    wave = mix(wave, swell, wave);
+    return pow(1.0 - pow(wave.x * wave.y, 0.65), choppy);
+}
+
+float2 ocean_rotate_octave(float2 uv) {
+    return float2x2(
+        float2(1.6, 1.2),
+        float2(-1.2, 1.6)
+    ) * uv;
+}
+
+float ocean_map_with_iterations(float3 p, int iterations, float seaTime) {
+    float freq = OCEAN_FREQ;
+    float amp = OCEAN_HEIGHT;
+    float choppy = OCEAN_CHOPPY;
+    float height = 0.0;
+    float2 uv = p.xz;
+    uv.x *= 0.75;
+
+    for (int i = 0; i < iterations; i++) {
+        float wave = ocean_octave((uv + seaTime) * freq, choppy);
+        wave += ocean_octave((uv - seaTime) * freq, choppy);
+        height += wave * amp;
+        uv = ocean_rotate_octave(uv);
+        freq *= 1.9;
+        amp *= 0.22;
+        choppy = mix(choppy, 1.0, 0.2);
     }
-    return v;
+
+    return p.y - height;
 }
 
-float ocean_wave_height(float2 uv, float t) {
-    // Slight horizontal wobble so wave fronts aren't ruler-straight
-    float wobble = ocean_noise(float2(uv.x * 0.5, uv.y * 0.3) + t * 0.05) * 0.6;
-
-    // Primary rolling wave fronts — horizontal lines moving top-to-bottom
-    float waves = sin(uv.y * 1.8 + wobble + t * 0.35) * 0.38;
-    waves += sin(uv.y * 3.2 + wobble * 0.7 + t * 0.28) * 0.18;
-
-    // Gentle cross-variation so it's not perfectly uniform across X
-    waves += sin(uv.x * 0.3 + uv.y * 2.4 + t * 0.22) * 0.08;
-
-    // Surface texture — moderate chop riding on the wave fronts
-    float chop = ocean_fbm(uv * 4.0 + float2(t * 0.15, t * 0.25), 5) * 0.15;
-
-    // Fine detail
-    float detail = ocean_fbm(uv * 9.0 + float2(t * 0.25, -t * 0.20), 4) * 0.06;
-
-    return waves + chop + detail;
+float ocean_map(float3 p, float time) {
+    float seaTime = 1.0 + time * OCEAN_SPEED;
+    return ocean_map_with_iterations(p, OCEAN_ITER_GEOMETRY, seaTime);
 }
 
-// Visible surface current swirls — sampled independently from the wave field
-float ocean_current_pattern(float2 uv, float t) {
-    float2 p1 = float2(
-        ocean_fbm(uv * 1.8 + float2(t * 0.12, t * 0.08), 5),
-        ocean_fbm(uv * 1.8 + float2(t * 0.09, -t * 0.11) + 7.3, 5)
+float ocean_map_detailed(float3 p, float time) {
+    float seaTime = 1.0 + time * OCEAN_SPEED;
+    return ocean_map_with_iterations(p, OCEAN_ITER_FRAGMENT, seaTime);
+}
+
+float ocean_height_map_tracing(float3 origin, float3 direction, float time, thread float3 &p) {
+    float nearDistance = 0.0;
+    float farDistance = 1000.0;
+    float farHeight = ocean_map(origin + direction * farDistance, time);
+
+    if (farHeight > 0.0) {
+        p = origin + direction * farDistance;
+        return farDistance;
+    }
+
+    float nearHeight = ocean_map(origin + direction * nearDistance, time);
+    float midDistance = 0.0;
+
+    for (int i = 0; i < OCEAN_NUM_STEPS; i++) {
+        midDistance = mix(nearDistance, farDistance, nearHeight / (nearHeight - farHeight));
+        p = origin + direction * midDistance;
+        float midHeight = ocean_map(p, time);
+
+        if (fabs(midHeight) < OCEAN_EPSILON) {
+            break;
+        }
+
+        if (midHeight < 0.0) {
+            farDistance = midDistance;
+            farHeight = midHeight;
+        } else {
+            nearDistance = midDistance;
+            nearHeight = midHeight;
+        }
+    }
+
+    return midDistance;
+}
+
+float3 ocean_normal(float3 p, float eps, float time) {
+    float height = ocean_map_detailed(p, time);
+    float3 n = float3(
+        ocean_map_detailed(p + float3(eps, 0.0, 0.0), time) - height,
+        eps,
+        ocean_map_detailed(p + float3(0.0, 0.0, eps), time) - height
     );
-    float2 p2 = float2(
-        ocean_fbm((uv + p1 * 1.2) * 1.6 + float2(t * 0.07, t * 0.05) + 3.1, 5),
-        ocean_fbm((uv + p1 * 1.2) * 1.6 + float2(-t * 0.06, t * 0.08) + 11.7, 5)
+    return normalize(n);
+}
+
+float ocean_bubble_cells(float2 uv) {
+    float2 cell = floor(uv);
+    float2 local = fract(uv);
+    float randomValue = ocean_hash(cell);
+    float2 center = float2(
+        ocean_hash(cell + float2(13.1, 7.7)),
+        ocean_hash(cell + float2(3.4, 19.9))
     );
-    return ocean_fbm(uv + p2 * 1.4, 5);
+    float radius = mix(0.08, 0.22, randomValue);
+    float bubble = 1.0 - smoothstep(radius, radius + 0.025, distance(local, center));
+    return bubble * smoothstep(0.58, 1.0, randomValue);
+}
+
+float ocean_breaking_bubbles(float3 p, float3 n, float3 dist, float time) {
+    float crest = smoothstep(0.24, 0.95, p.y);
+    float steepness = smoothstep(0.08, 0.34, 1.0 - n.y);
+    float distanceFade = max(1.0 - dot(dist, dist) * 0.0015, 0.0);
+    float2 flow = p.xz + float2(time * 0.28, -time * 0.12);
+
+    float fineBubbles = ocean_bubble_cells(flow * 26.0);
+    float clusteredBubbles = ocean_bubble_cells(flow * 13.0 + 4.7);
+    float streaks = smoothstep(0.42, 0.78, ocean_noise(flow * 8.0));
+
+    return clamp((fineBubbles * 0.72 + clusteredBubbles * 0.38) * streaks *
+                 crest * steepness * distanceFade, 0.0, 1.0);
+}
+
+float3 ocean_sea_color(float3 p, float3 n, float3 l, float3 eye, float3 dist, float time) {
+    float fresnel = clamp(1.0 - dot(n, -eye), 0.0, 1.0);
+    fresnel = min(pow(fresnel, 3.0), 0.5);
+
+    float3 reflected = ocean_sky_color(reflect(eye, n));
+    float3 refracted = OCEAN_BASE + OCEAN_WATER_COLOR * ocean_diffuse(n, l, 80.0) * 0.12;
+    float3 color = mix(refracted, reflected, float3(fresnel));
+
+    float atten = max(1.0 - dot(dist, dist) * 0.001, 0.0);
+    color += OCEAN_WATER_COLOR * (p.y - OCEAN_HEIGHT) * 0.18 * atten;
+    color += float3(ocean_specular(n, l, eye, 60.0));
+
+    float bubbles = ocean_breaking_bubbles(p, n, dist, time);
+    color = mix(color, float3(0.82, 0.90, 0.95), bubbles * OCEAN_BUBBLE_STRENGTH);
+
+    return color;
+}
+
+float3 ocean_pixel(float2 fragCoord, float2 resolution, float waveTime, float cameraTime) {
+    float2 uv = fragCoord / resolution * 2.0 - 1.0;
+    uv.x *= resolution.x / resolution.y;
+
+    float3 origin = float3(0.0, 3.5, cameraTime * 5.0);
+    float3 direction = normalize(float3(uv, -2.0));
+    direction.z += length(uv) * 0.14;
+    direction = normalize(direction);
+
+    float3 angle = float3(
+        sin(cameraTime * 3.0) * 0.1,
+        sin(cameraTime) * 0.035 + 0.3,
+        cameraTime * 0.05
+    );
+    direction = normalize(transpose(ocean_from_euler(angle)) * direction);
+
+    float3 p;
+    ocean_height_map_tracing(origin, direction, waveTime, p);
+    float3 dist = p - origin;
+    float eps = max(dot(dist, dist) * (0.1 / resolution.x), 0.001);
+    float3 normal = ocean_normal(p, eps, waveTime);
+    float3 light = normalize(float3(0.0, 1.0, 0.8));
+
+    float3 sky = ocean_sky_color(direction);
+    float3 sea = ocean_sea_color(p, normal, light, direction, dist, waveTime);
+    float horizonMask = pow(smoothstep(0.0, -0.02, direction.y), 0.2);
+
+    float3 color = mix(sky, sea, float3(horizonMask));
+    color = pow(max(color, float3(0.0)), float3(0.65));
+    return clamp((color - 0.5) * OCEAN_CONTRAST + 0.5, float3(0.0), float3(1.0));
 }
 
 fragment float4 fragment_shader_ocean(
     VertexOut in [[stage_in]],
     constant OceanUniforms &uniforms [[buffer(0)]]) {
 
-    float2 uv = (in.position.xy * 2.0 - uniforms.resolution) /
-                 min(uniforms.resolution.x, uniforms.resolution.y);
-    float t = uniforms.time;
-
-    float2 oceanUV = uv * 2.0;
-
-    float height = ocean_wave_height(oceanUV, t);
-
-    // Finite-difference gradient for slope / foam detection
-    float e = 0.015;
-    float hx = ocean_wave_height(oceanUV + float2(e, 0.0), t);
-    float hy = ocean_wave_height(oceanUV + float2(0.0, e), t);
-    float slope = length(float2(hx - height, hy - height) / e);
-
-    // ---- Deep North Atlantic blue (Titanic-style) ----
-    float3 abyssColor  = float3(0.01,  0.02,  0.06);
-    float3 deepColor   = float3(0.02,  0.04,  0.10);
-    float3 troughColor = float3(0.03,  0.06,  0.14);
-    float3 bodyColor   = float3(0.05,  0.09,  0.20);
-    float3 faceColor   = float3(0.07,  0.13,  0.27);
-    float3 crestColor  = float3(0.10,  0.18,  0.34);
-    float3 foamColor   = float3(0.50,  0.54,  0.58);
-    float3 sprayColor  = float3(0.65,  0.68,  0.72);
-
-    // Height-based colour mapping
-    float h = smoothstep(-0.6, 0.8, height);
-    float3 color = mix(abyssColor,  deepColor,   smoothstep(0.00, 0.15, h));
-    color = mix(color, troughColor, smoothstep(0.15, 0.30, h));
-    color = mix(color, bodyColor,   smoothstep(0.30, 0.50, h));
-    color = mix(color, faceColor,   smoothstep(0.50, 0.70, h));
-    color = mix(color, crestColor,  smoothstep(0.70, 0.90, h));
-
-    // Subsurface glow in mid-wave translucency
-    float subsurface = smoothstep(0.3, 0.7, h) * (1.0 - smoothstep(0.7, 1.0, h));
-    color += float3(0.005, 0.008, 0.020) * subsurface;
-
-    // Visible surface current swirls — lighter/darker eddies flowing across the water
-    float current = ocean_current_pattern(oceanUV, t);
-    float currentShift = (current - 0.5) * 0.12;
-    color += color * currentShift;
-
-    // Foam on steep wave crests
-    float foamMask = smoothstep(0.6, 1.0, height * 0.7 + slope * 0.25);
-    float foamDetail = ocean_fbm(oceanUV * 18.0 + float2(t * 0.35, t * 0.2), 5);
-    foamMask *= smoothstep(0.25, 0.7, foamDetail);
-    color = mix(color, foamColor, foamMask * 0.55);
-
-    // Wind-blown spray tearing off the highest crests
-    float spray = smoothstep(0.85, 1.0, height * 0.6 + slope * 0.4);
-    spray *= ocean_fbm(oceanUV * 30.0 + float2(t * 0.8, t * 0.1), 4);
-    spray = smoothstep(0.4, 0.9, spray);
-    color = mix(color, sprayColor, spray * 0.35);
-
-    // Specular glint from an overcast sky
-    float spec = pow(clamp(slope * 0.4, 0.0, 1.0), 4.0) * 0.10;
-    color += float3(0.06, 0.08, 0.12) * spec;
-
-    // Deepen the troughs
-    float troughDark = 1.0 - smoothstep(-0.4, 0.1, height);
-    color *= 1.0 - troughDark * 0.3;
-
-    // Vignette
-    float vignette = 1.0 - smoothstep(0.8, 2.0, length(uv));
-    color *= mix(0.35, 1.0, vignette);
-
+    float2 fragCoord = float2(in.position.x, uniforms.resolution.y - in.position.y);
+    float3 color = ocean_pixel(
+        fragCoord,
+        uniforms.resolution,
+        uniforms.time,
+        uniforms.time * OCEAN_CAMERA_TIME_SCALE
+    );
     return float4(color, 1.0);
 }
 """

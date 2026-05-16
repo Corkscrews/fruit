@@ -208,6 +208,8 @@ public final class FruitView: NSView {
       return MetalCircularGradientLayer(frame: self.frame, fruit: fruit, contentsScale: scale)
     case .psychedelic:
       return PsyLayer(frame: self.frame, fruit: fruit, contentsScale: scale)
+    case .california:
+      return CaliforniaLayer(frame: self.frame, fruit: fruit, contentsScale: scale)
     case .liquid:
       return LiquidLayer(frame: self.frame, fruit: fruit, contentsScale: scale)
     case .puppy:
@@ -216,6 +218,14 @@ public final class FruitView: NSView {
       return WarpLayer(frame: self.frame, fruit: fruit, contentsScale: scale)
     case .ocean:
       return OceanLayer(frame: self.frame, fruit: fruit, contentsScale: scale)
+    case .glass:
+      return GlassLayer(frame: self.frame, fruit: fruit, contentsScale: scale)
+    case .metallic:
+      return MetallicLayer(frame: self.frame, fruit: fruit, contentsScale: scale)
+    case .pogo:
+      return POGOLayer(frame: self.frame, fruit: fruit, contentsScale: scale)
+    case .glue:
+      return GlueLayer(frame: self.frame, fruit: fruit, contentsScale: scale)
     }
   }
 

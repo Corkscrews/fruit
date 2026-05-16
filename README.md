@@ -23,6 +23,8 @@ Now you can select from multiple fruit types and backgrounds:
  - Puppy (Fruit logo tunnel zoom)
  - Warp Speed (relativistic star field simulation)
  - Irish Ocean (dark North Atlantic ocean simulation)
+ - Glass (polarized glass rainbow simulation)
+ - Metallic (reflective metal surface simulation)
   
 *You are welcome to create new designs through PRs!*
 

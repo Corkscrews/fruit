@@ -4,8 +4,13 @@ import QuartzCore
 import Foundation
 import MetalKit
 
+private let warpLayerCount = 14
+private let warpRenderScale: CGFloat = 1.0
+
 private let metalWarpShaderSource = """
 using namespace metal;
+
+#define WARP_LAYER_COUNT \(warpLayerCount)
 
 struct VertexData {
     float2 position;
@@ -76,7 +81,7 @@ fragment float4 fragment_shader_warp(
 
     float3 col = float3(0.0);
 
-    for (int i = 0; i < 20; i++) {
+    for (int i = 0; i < WARP_LAYER_COUNT; i++) {
         constant WarpLayerData &ld = layers[i];
         if (ld.fade < 0.001) continue;
 
@@ -119,8 +124,11 @@ fragment float4 fragment_shader_warp(
                 float b = max(pb, sb) * ld.fade * smoothstep(0.15, 0.8, h1);
                 if (b < 0.0001) continue; // quartic falloff makes distant stars negligible
 
-                float inv_sr = rsqrt(max(sr2, 1e-6));
-                float sr = sr2 * inv_sr;
+                float sr = 0.0;
+                bool use_radial_effects = u.beamingMix > 0.01 || u.dopplerMix > 0.01;
+                if (use_radial_effects) {
+                    sr = sqrt(sr2);
+                }
 
                 if (!skip_twinkle) {
                     b *= mix(
@@ -130,7 +138,9 @@ fragment float4 fragment_shader_warp(
                     );
                 }
 
-                b *= mix(1.0, 1.0 / (1.0 + sr * 4.0), u.beamingMix);
+                if (u.beamingMix > 0.01) {
+                    b *= mix(1.0, 1.0 / (1.0 + sr * 4.0), u.beamingMix);
+                }
 
                 float cr = fract(sp.x * 7.77 + 0.5);
                 float cr_s1 = smoothstep(0.3, 0.8, cr);
@@ -206,6 +216,17 @@ final class WarpLayer: CAMetalLayer, Background {
   private var commandQueue: MTLCommandQueue?
   private var pipelineState: MTLRenderPipelineState?
   private var vertexBuffer: MTLBuffer?
+  private var layerData = Array(
+    repeating: MetalWarpLayerData(
+      scale: 1.0,
+      inv_scale: 1.0,
+      fade: 0.0,
+      inv_ds2: 0.0,
+      fi64: 0.0,
+      fi27: 0.0
+    ),
+    count: warpLayerCount
+  )
 
   // MARK: - Animation
   private var totalElapsedTime: CGFloat = 0
@@ -238,6 +259,8 @@ final class WarpLayer: CAMetalLayer, Background {
     self.pixelFormat = .bgra8Unorm
     self.isOpaque = true
     self.framebufferOnly = true
+    self.magnificationFilter = .linear
+    updateDrawableSize(for: frame)
 
     setupMetal()
     setupPipeline()
@@ -271,6 +294,13 @@ final class WarpLayer: CAMetalLayer, Background {
 
     guard let commandQueue = device.makeCommandQueue() else { return }
     self.commandQueue = commandQueue
+  }
+
+  private func updateDrawableSize(for frame: CGRect) {
+    drawableSize = CGSize(
+      width: max(1, frame.width * contentsScale * warpRenderScale),
+      height: max(1, frame.height * contentsScale * warpRenderScale)
+    )
   }
 
   private func setupPipeline() {
@@ -309,6 +339,7 @@ final class WarpLayer: CAMetalLayer, Background {
   func update(frame: NSRect, fruit: Fruit) {
     currentFruit = fruit
     setFrameAndDrawableSizeWithoutAnimation(frame)
+    updateDrawableSize(for: frame)
     setNeedsDisplay()
   }
 
@@ -394,7 +425,7 @@ final class WarpLayer: CAMetalLayer, Background {
 
     let spd = Float(currentSpeed)
     let time = Float(totalElapsedTime)
-    let referenceSize: Float = 300.0 * Float(contentsScale)
+    let referenceSize: Float = 300.0 * Float(contentsScale * warpRenderScale)
     let resW = Float(texture.width)
     let resH = Float(texture.height)
 
@@ -417,7 +448,7 @@ final class WarpLayer: CAMetalLayer, Background {
       streakMix: ss(0.3, 1.5, spd),
       brightScaled: (4.0 + (1.3 - 4.0) * ss(0.5, 2.0, spd)) * 0.225,
       tScroll: time * scroll,
-      cull: 0.02 + (0.15 - 0.02) * ss(0.3, 2.0, spd),
+      cull: 0.12 + (0.28 - 0.12) * ss(0.3, 2.0, spd),
       dopplerMix: ss(3.0, 8.0, spd),
       beamingMix: ss(2.0, 8.0, spd),
       twinkleSolid: ss(0.3, 1.0, spd),
@@ -425,24 +456,22 @@ final class WarpLayer: CAMetalLayer, Background {
       vigRadius: 2.0 + (1.2 - 2.0) * ss(3.0, 10.0, spd)
     )
 
-    var layerData = [MetalWarpLayerData]()
-    layerData.reserveCapacity(20)
-    for i in 0..<20 {
+    for i in 0..<warpLayerCount {
       let fi = Float(i)
       let z = Self.glslFract(
-        fi / 20.0 + uniforms.tScroll + Self.warpHash(SIMD2<Float>(fi, fi * 0.7)) * 0.05
+        fi / Float(warpLayerCount) + uniforms.tScroll + Self.warpHash(SIMD2<Float>(fi, fi * 0.7)) * 0.05
       )
       let scale = 18.0 + (0.8 - 18.0) * z
       let fade = ss(0.0, 0.1, z) * ss(1.0, 0.8, z)
       let ds: Float = 0.0018 + 0.0006 * z
-      layerData.append(MetalWarpLayerData(
+      layerData[i] = MetalWarpLayerData(
         scale: scale,
         inv_scale: 1.0 / scale,
         fade: fade,
         inv_ds2: 1.0 / (ds * ds),
         fi64: fi * 64.0,
         fi27: fi * 27.0
-      ))
+      )
     }
 
     let renderPassDescriptor = MTLRenderPassDescriptor()
@@ -465,11 +494,12 @@ final class WarpLayer: CAMetalLayer, Background {
       let leafExtra = fruit.maxDimen() * 0.231
       let fb = CGRect(x: body.minX - 4, y: body.minY - 4,
                        width: body.width + 8, height: body.height + 8 + leafExtra)
-      let cs = contentsScale
-      let sx = max(0, Int(fb.minX * cs))
-      let sy = max(0, Int((bounds.height - fb.maxY) * cs))
-      let sw = min(Int(fb.width * cs), Int(resW) - sx)
-      let sh = min(Int(fb.height * cs), Int(resH) - sy)
+      let scaleX = CGFloat(resW) / max(bounds.width, 1)
+      let scaleY = CGFloat(resH) / max(bounds.height, 1)
+      let sx = max(0, Int(fb.minX * scaleX))
+      let sy = max(0, Int((bounds.height - fb.maxY) * scaleY))
+      let sw = max(0, min(Int(ceil(fb.width * scaleX)), Int(resW) - sx))
+      let sh = max(0, min(Int(ceil(fb.height * scaleY)), Int(resH) - sy))
       if sw > 0 && sh > 0 {
         renderEncoder.setScissorRect(MTLScissorRect(x: sx, y: sy, width: sw, height: sh))
       }

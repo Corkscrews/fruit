@@ -286,10 +286,10 @@ final class PsyLayer: CAMetalLayer, Background {
       startSpeed = currentSpeed
       isFastPhase.toggle()
       if isFastPhase {
-        targetSpeed = CGFloat.random(in: 1.6...2.8)
+        targetSpeed = CGFloat.random(in: 0.8...1.0)
         phaseDuration = CGFloat.random(in: 1.5...3.0)
       } else {
-        targetSpeed = CGFloat.random(in: 0.08...0.25)
+        targetSpeed = CGFloat.random(in: 0.02...0.12)
         phaseDuration = CGFloat.random(in: 20.0...40.0)
       }
     }
