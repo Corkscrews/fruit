@@ -10,9 +10,8 @@ func createPreferencesWindow(preferencesRepository: PreferencesRepository) -> NS
   let window = NSWindow(contentViewController: viewController)
   window.title = "Preferences"
   window.styleMask.insert(.resizable)
-  window.center()
-  window.makeKeyAndOrderFront(nil)
-  viewController.window = window  // Store the window reference
+  window.isReleasedWhenClosed = false
+  viewController.window = window
   return window
 }
 
@@ -89,11 +88,13 @@ final class PreferencesViewController: NSViewController, NSTableViewDataSource, 
     return label
   }()
 
-  /// Display link for synchronizing animation with screen refresh rate.
-  private var displayLink: CVDisplayLink?
+  private let displayLinkAnimator = DisplayLinkAnimator()
+
+  private var debugStatsView: DebugStatsView?
+  private var lastDebugUpdateTime: TimeInterval = 0
 
   deinit {
-    stopDisplayLink()
+    displayLinkAnimator.stop()
     NotificationCenter.default.removeObserver(self)
   }
 
@@ -112,7 +113,10 @@ final class PreferencesViewController: NSViewController, NSTableViewDataSource, 
     configView()
     addSubviews()
     configConstraints()
-    setupDisplayLink()
+    setupDisplayLinkAnimator()
+    if DebugStatsView.isEnabled {
+      setupDebugView()
+    }
   }
 
   /// Configures the main view with a black background.
@@ -145,6 +149,23 @@ final class PreferencesViewController: NSViewController, NSTableViewDataSource, 
     ])
   }
 
+  private func setupDebugView() {
+    let debugView = DebugStatsView(frame: .zero)
+    self.view.addSubview(debugView)
+    debugStatsView = debugView
+    debugView.update(fps: 60)
+    positionDebugView()
+  }
+
+  private func positionDebugView() {
+    guard let debugView = debugStatsView else { return }
+    let margin: CGFloat = 12
+    debugView.frame.origin = CGPoint(
+      x: margin,
+      y: view.bounds.height - debugView.frame.height - margin
+    )
+  }
+
   /// Called after the view is loaded.
   /// Sets up the initial frame for the fruit view.
   override func viewDidLoad() {
@@ -158,60 +179,29 @@ final class PreferencesViewController: NSViewController, NSTableViewDataSource, 
     super.viewDidLayout()
     fruitView.frame = self.view.bounds
     metalView.frame = self.view.bounds
+    if DebugStatsView.isEnabled {
+      positionDebugView()
+    }
   }
 
   // MARK: - Display Link
 
-  private final class DisplayLinkContext {
-    weak var controller: PreferencesViewController?
-    init(_ controller: PreferencesViewController) { self.controller = controller }
+  private func setupDisplayLinkAnimator() {
+    displayLinkAnimator.onFrame = { [weak self] fps in
+      self?.fruitView.animateOneFrame(framesPerSecond: fps)
+      self?.updateDebugStatsIfNeeded(fps: fps)
+    }
+    displayLinkAnimator.start(on: view.window?.screen)
   }
 
-  private var displayLinkContext: DisplayLinkContext?
-
-  private func stopDisplayLink() {
-    if let displayLink = displayLink {
-      CVDisplayLinkStop(displayLink)
+  private func updateDebugStatsIfNeeded(fps: Int) {
+    guard DebugStatsView.isEnabled else { return }
+    let now = CACurrentMediaTime()
+    if now - lastDebugUpdateTime >= 0.5 {
+      lastDebugUpdateTime = now
+      debugStatsView?.update(fps: fps)
+      positionDebugView()
     }
-    displayLink = nil
-    displayLinkContext = nil
-  }
-
-  private func setupDisplayLink() {
-    stopDisplayLink()
-
-    var link: CVDisplayLink?
-    if let screen = view.window?.screen {
-      let displayID = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")]
-        as? CGDirectDisplayID ?? CGMainDisplayID()
-      CVDisplayLinkCreateWithCGDisplay(displayID, &link)
-    } else {
-      CVDisplayLinkCreateWithCGDisplay(CGMainDisplayID(), &link)
-    }
-
-    guard let displayLink = link else { return }
-    self.displayLink = displayLink
-
-    let context = DisplayLinkContext(self)
-    self.displayLinkContext = context
-
-    CVDisplayLinkSetOutputCallback(
-      displayLink, { (_, inNow, _, _, _, userInfo) -> CVReturn in
-      let ctx = Unmanaged<DisplayLinkContext>
-        .fromOpaque(userInfo!).takeUnretainedValue()
-      guard let controller = ctx.controller else { return kCVReturnSuccess }
-
-      let timeScale = Int64(inNow.pointee.videoTimeScale)
-      let frameDuration = inNow.pointee.videoRefreshPeriod
-      let fps: Int = frameDuration > 0 ? Int(timeScale / frameDuration) : 60
-
-      DispatchQueue.main.async { [weak controller] in
-        controller?.fruitView.animateOneFrame(framesPerSecond: fps)
-      }
-      return kCVReturnSuccess
-    }, Unmanaged.passUnretained(context).toOpaque())
-
-    CVDisplayLinkStart(displayLink)
   }
 
   // MARK: - EDR
@@ -231,7 +221,7 @@ final class PreferencesViewController: NSViewController, NSTableViewDataSource, 
   @objc
   private func screenDidChange() {
     checkEDR()
-    setupDisplayLink()
+    displayLinkAnimator.start(on: view.window?.screen)
   }
 
   @objc
@@ -392,6 +382,26 @@ final class PreferencesControlsView: NSView {
         return "Linear Gradient"
       case .circularGradient:
         return "Circular Gradient"
+      case .psychedelic:
+        return "Psychedelic"
+      case .california:
+        return "California"
+      case .liquid:
+        return "Liquid"
+      case .puppy:
+        return "Puppy"
+      case .warp:
+        return "Warp Speed"
+      case .ocean:
+        return "Irish Ocean"
+      case .glass:
+        return "Glass"
+      case .metallic:
+        return "Metallic"
+      case .pogo:
+        return "POGO"
+      case .glue:
+        return "Glue"
       }
     })
     return items

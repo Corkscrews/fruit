@@ -74,11 +74,13 @@ final class MetalSolidLayer: CAMetalLayer, Background {
   }
 
   // MARK: - Initialization
-  init(frame: CGRect, fruit: Fruit, contentsScale: CGFloat) { // Frame is CGRect for CALayer
+  init(frame: CGRect, fruit: Fruit, leaf: Leaf, contentsScale: CGFloat) { // Frame is CGRect for CALayer
     super.init()
 
     self.frame = frame
     self.contentsScale = contentsScale
+    self.currentFruit = fruit
+    self.currentLeaf = leaf
     self.pixelFormat = .bgra8Unorm
     self.isOpaque = true
     self.framebufferOnly = true // Typically true for layers that don't need to be read back
@@ -95,22 +97,12 @@ final class MetalSolidLayer: CAMetalLayer, Background {
   override init(layer: Any) {
     super.init(layer: layer)
     guard let other = layer as? MetalSolidLayer else { return }
-
-    let device = other.metalDevice ?? MTLCreateSystemDefaultDevice()
-    guard let device = device else { return }
-    self.metalDevice = device
-    self.device = device
-
-    self.pixelFormat = other.pixelFormat
-    self.framebufferOnly = other.framebufferOnly
-    self.isOpaque = other.isOpaque
-
+    self.metalDevice = other.metalDevice
+    self.commandQueue = other.commandQueue
+    self.pipelineState = other.pipelineState
+    self.vertexBuffer = other.vertexBuffer
     self.colorIndex = other.colorIndex
     self.elapsedTime = other.elapsedTime
-
-    self.commandQueue = device.makeCommandQueue()
-    setupPipeline()
-    createVertexBuffers()
   }
 
   private func setupMetal() {
@@ -154,14 +146,20 @@ final class MetalSolidLayer: CAMetalLayer, Background {
     )
   }
 
+  private weak var currentFruit: Fruit?
+  private weak var currentLeaf: Leaf?
+
   // MARK: - Background Protocol
-  func update(frame: NSRect, fruit: Fruit) {
-    self.frame = frame
+  func update(frame: NSRect, fruit: Fruit, leaf: Leaf) {
+    currentFruit = fruit
+    currentLeaf = leaf
+    setFrameAndDrawableSizeWithoutAnimation(frame)
     setNeedsDisplay()
   }
 
-  func config(fruit: Fruit) {
-    // Fruit parameter is not used by MetalSolidLayer's appearance
+  func config(fruit: Fruit, leaf: Leaf) {
+    currentFruit = fruit
+    currentLeaf = leaf
     setNeedsDisplay()
   }
 
@@ -207,10 +205,23 @@ final class MetalSolidLayer: CAMetalLayer, Background {
     }
 
     renderEncoder.setRenderPipelineState(pipelineState)
+    if let fruit = currentFruit, let leaf = currentLeaf {
+      let body = fruit.bounds(including: leaf)
+      let fb = CGRect(x: body.minX - 4, y: body.minY - 4,
+                       width: body.width + 8, height: body.height + 8)
+      let cs = contentsScale
+      let sx = max(0, Int(fb.minX * cs))
+      let sy = max(0, Int((bounds.height - fb.maxY) * cs))
+      let sw = min(Int(fb.width * cs), texture.width - sx)
+      let sh = min(Int(fb.height * cs), texture.height - sy)
+      if sw > 0 && sh > 0 {
+        renderEncoder.setScissorRect(MTLScissorRect(x: sx, y: sy, width: sw, height: sh))
+      }
+    }
     renderEncoder.setVertexBuffer(vertexBuffer, offset: 0, index: 0)
     renderEncoder.setFragmentBytes(&uniforms, length: MemoryLayout<MetalSolidColorFragmentUniforms>.stride, index: 0)
 
-    renderEncoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6) // Draw a full-screen quad
+    renderEncoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6)
 
     renderEncoder.endEncoding()
     commandBuffer.present(drawable)

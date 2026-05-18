@@ -150,7 +150,7 @@ public final class FruitView: NSView {
     guard let layer = self.layer else { return }
 
     if let fruitBackground = self.fruitBackground {
-      fruitBackground.config(fruit: fruit)
+      fruitBackground.config(fruit: fruit, leaf: leaf)
     } else {
       self.backgroundLayer?.removeFromSuperlayer()
       self.backgroundLayer = nil
@@ -165,7 +165,7 @@ public final class FruitView: NSView {
     let needsAddBackgroundLayer = self.backgroundLayer == nil
 
     if let backgroundLayer = self.backgroundLayer {
-      backgroundLayer.config(fruit: fruit)
+      backgroundLayer.config(fruit: fruit, leaf: leaf)
     } else {
       let newBackground = BackgroundLayer(frame: self.frame)
       newBackground.contentsScale = displayContentsScale()
@@ -199,13 +199,33 @@ public final class FruitView: NSView {
 
     switch fruitType {
     case .rainbow:
-      return RainbowsLayer(frame: self.frame, fruit: fruit, contentsScale: scale)
+      return RainbowsLayer(frame: self.frame, fruit: fruit, leaf: leaf, contentsScale: scale)
     case .solid:
-      return MetalSolidLayer(frame: self.frame, fruit: fruit, contentsScale: scale)
+      return MetalSolidLayer(frame: self.frame, fruit: fruit, leaf: leaf, contentsScale: scale)
     case .linearGradient:
-      return MetalLinearGradientLayer(frame: self.frame, fruit: fruit, contentsScale: scale)
+      return MetalLinearGradientLayer(frame: self.frame, fruit: fruit, leaf: leaf, contentsScale: scale)
     case .circularGradient:
-      return MetalCircularGradientLayer(frame: self.frame, fruit: fruit, contentsScale: scale)
+      return MetalCircularGradientLayer(frame: self.frame, fruit: fruit, leaf: leaf, contentsScale: scale)
+    case .psychedelic:
+      return PsyLayer(frame: self.frame, fruit: fruit, leaf: leaf, contentsScale: scale)
+    case .california:
+      return CaliforniaLayer(frame: self.frame, fruit: fruit, leaf: leaf, contentsScale: scale)
+    case .liquid:
+      return LiquidLayer(frame: self.frame, fruit: fruit, leaf: leaf, contentsScale: scale)
+    case .puppy:
+      return PuppyLayer(frame: self.frame, fruit: fruit, leaf: leaf, contentsScale: scale)
+    case .warp:
+      return WarpLayer(frame: self.frame, fruit: fruit, leaf: leaf, contentsScale: scale)
+    case .ocean:
+      return OceanLayer(frame: self.frame, fruit: fruit, leaf: leaf, contentsScale: scale)
+    case .glass:
+      return GlassLayer(frame: self.frame, fruit: fruit, leaf: leaf, contentsScale: scale)
+    case .metallic:
+      return MetallicLayer(frame: self.frame, fruit: fruit, leaf: leaf, contentsScale: scale)
+    case .pogo:
+      return POGOLayer(frame: self.frame, fruit: fruit, leaf: leaf, contentsScale: scale)
+    case .glue:
+      return GlueLayer(frame: self.frame, fruit: fruit, leaf: leaf, contentsScale: scale)
     }
   }
 
@@ -276,8 +296,8 @@ public final class FruitView: NSView {
   /// Handles view resizing. Updates all layers and geometry on size change.
   public override func layout() {
     super.layout()
-    backgroundLayer?.update(frame: self.frame, fruit: self.fruit)
-    fruitBackground?.update(frame: self.frame, fruit: self.fruit)
+    backgroundLayer?.update(frame: self.frame, fruit: self.fruit, leaf: self.leaf)
+    fruitBackground?.update(frame: self.frame, fruit: self.fruit, leaf: self.leaf)
     setNeedsDisplay(bounds)
   }
 

@@ -170,12 +170,14 @@ final class MetalLinearGradientLayer: CAMetalLayer, Background {
   }
 
   // MARK: - Initialization
-  init(frame: CGRect, fruit: Fruit, contentsScale: CGFloat) { // Frame is CGRect for CALayer
+  init(frame: CGRect, fruit: Fruit, leaf: Leaf, contentsScale: CGFloat) { // Frame is CGRect for CALayer
     // currentFruitMaxDimension is not used for linear gradient
     super.init()
 
     self.frame = frame
     self.contentsScale = contentsScale
+    self.currentFruit = fruit
+    self.currentLeaf = leaf
     self.pixelFormat = .bgra8Unorm
     self.isOpaque = true
     self.framebufferOnly = true
@@ -200,30 +202,14 @@ final class MetalLinearGradientLayer: CAMetalLayer, Background {
   override init(layer: Any) {
     super.init(layer: layer)
     guard let other = layer as? MetalLinearGradientLayer else { return }
-
-    let device = other.metalDevice ?? MTLCreateSystemDefaultDevice()
-    guard let device = device else { return }
-    self.metalDevice = device
-    self.device = device
-
-    self.pixelFormat = other.pixelFormat
-    self.framebufferOnly = other.framebufferOnly
-    self.isOpaque = other.isOpaque
-
+    self.metalDevice = other.metalDevice
+    self.commandQueue = other.commandQueue
+    self.pipelineState = other.pipelineState
+    self.vertexBuffer = other.vertexBuffer
+    self.currentInterpolatedColorsBuffer = other.currentInterpolatedColorsBuffer
+    self.gradientLocationsBuffer = other.gradientLocationsBuffer
     self.colorIndex = other.colorIndex
     self.elapsedTime = other.elapsedTime
-
-    self.commandQueue = device.makeCommandQueue()
-    setupPipeline()
-    createVertexBuffers()
-    createColorLocationBuffer()
-
-    let currentColors = calculateCurrentInterpolatedColors()
-    currentInterpolatedColorsBuffer = device.makeBuffer(
-      bytes: currentColors,
-      length: MemoryLayout<SIMD4<Float>>.stride * colorArray.count,
-      options: .storageModeShared
-    )
   }
 
   private func setupMetal() {
@@ -282,14 +268,20 @@ final class MetalLinearGradientLayer: CAMetalLayer, Background {
     )
   }
 
+  private weak var currentFruit: Fruit?
+  private weak var currentLeaf: Leaf?
+
   // MARK: - Background Protocol
-  func update(frame: NSRect, fruit: Fruit) {
-    self.frame = frame
+  func update(frame: NSRect, fruit: Fruit, leaf: Leaf) {
+    currentFruit = fruit
+    currentLeaf = leaf
+    setFrameAndDrawableSizeWithoutAnimation(frame)
     setNeedsDisplay()
   }
 
-  func config(fruit: Fruit) {
-    // Fruit parameter is not directly used by MetalLinearGradientLayer's appearance
+  func config(fruit: Fruit, leaf: Leaf) {
+    currentFruit = fruit
+    currentLeaf = leaf
     setNeedsDisplay()
   }
 
@@ -335,6 +327,19 @@ final class MetalLinearGradientLayer: CAMetalLayer, Background {
     }
 
     configureRenderEncoder(renderEncoder, uniforms: &uniforms)
+    if let fruit = currentFruit, let leaf = currentLeaf {
+      let body = fruit.bounds(including: leaf)
+      let fb = CGRect(x: body.minX - 4, y: body.minY - 4,
+                       width: body.width + 8, height: body.height + 8)
+      let cs = contentsScale
+      let sx = max(0, Int(fb.minX * cs))
+      let sy = max(0, Int((bounds.height - fb.maxY) * cs))
+      let sw = min(Int(fb.width * cs), texture.width - sx)
+      let sh = min(Int(fb.height * cs), texture.height - sy)
+      if sw > 0 && sh > 0 {
+        renderEncoder.setScissorRect(MTLScissorRect(x: sx, y: sy, width: sw, height: sh))
+      }
+    }
     renderEncoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6)
 
     renderEncoder.endEncoding()
