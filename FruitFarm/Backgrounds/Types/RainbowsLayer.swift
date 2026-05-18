@@ -31,11 +31,11 @@ final class RainbowsLayer: CALayer, Background {
   }
 
   // MARK: - Init
-  init(frame: NSRect, fruit: Fruit, contentsScale: CGFloat) {
+  init(frame: NSRect, fruit: Fruit, leaf: Leaf, contentsScale: CGFloat) {
     super.init()
     self.frame = frame
     self.contentsScale = contentsScale
-    config(fruit: fruit)
+    config(fruit: fruit, leaf: leaf)
   }
 
   required init?(coder: NSCoder) {
@@ -50,20 +50,20 @@ final class RainbowsLayer: CALayer, Background {
     }
   }
 
-  func update(frame: NSRect, fruit: Fruit) {
+  func update(frame: NSRect, fruit: Fruit, leaf: Leaf) {
     setFrameWithoutAnimation(frame)
-    config(fruit: fruit)
+    config(fruit: fruit, leaf: leaf)
   }
 
   /// Creates the paths and assigns colors for each colored bar.
-  func config(fruit: Fruit) {
-    let fruitPath = fruit.transformedPath
+  func config(fruit: Fruit, leaf: Leaf) {
+    let fruitBounds = fruit.bounds(including: leaf)
     let width = bounds.size.width
     let originX: CGFloat = 0.0
-    let originY = fruitPath.bounds.size.height
+    let originY = fruitBounds.size.height
     let middleY = bounds.size.height / 2
 
-    heightOfBars = fruitPath.bounds.size.height / CGFloat(Self.barCountPerCycle)
+    heightOfBars = fruitBounds.size.height / CGFloat(Self.barCountPerCycle)
 
     var lastY = middleY - originY
     lastY -= heightOfBars * CGFloat(Self.barCountPerCycle)

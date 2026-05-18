@@ -28,6 +28,7 @@ struct MetallicUniforms {
     float2 body_center_px;
     float2 body_half_px;
     float time;
+    float zoom_factor;
 };
 
 float metallic_hash(float2 p) {
@@ -114,7 +115,7 @@ float3 metallic_surface_color(float2 lp, float a) {
     color = mix(color * float3(0.90, 0.93, 1.06), color * float3(1.04, 1.01, 0.96), smoothstep(0.28, 0.72, lum));
 
     // Reduce overall brightness, increase contrast
-    color *= 0.58;
+    color *= 0.8;
     color = (color - 0.5) * 1.55 + 0.5;
 
     return color;
@@ -125,7 +126,8 @@ fragment float4 fragment_shader_metallic(
     constant MetallicUniforms &uniforms [[buffer(0)]]) {
 
     float2 half_px = max(uniforms.body_half_px, float2(1.0));
-    float2 lp = (in.position.xy - uniforms.body_center_px) / half_px;
+    float zoom = max(uniforms.zoom_factor, 0.001);
+    float2 lp = ((in.position.xy - uniforms.body_center_px) / half_px) / zoom;
 
     float loop = fract(uniforms.time / 14.0);
     float a = loop * 6.28318530718;
@@ -156,6 +158,7 @@ private struct MetalMetallicFragmentUniforms {
   var body_center_px: SIMD2<Float>
   var body_half_px: SIMD2<Float>
   var time: Float
+  var zoom_factor: Float
   // swiftlint:enable identifier_name
 }
 
@@ -172,6 +175,15 @@ final class MetallicLayer: CAMetalLayer, Background {
   private var totalElapsedTime: CGFloat = 0
   private var lastUpdateTime: CGFloat = 0
   private let minUpdateInterval: CGFloat = 1.0 / 30.0
+  private var metallicZoomFactor: CGFloat = 0.85
+
+  var zoomFactor: CGFloat {
+    get { metallicZoomFactor }
+    set {
+      metallicZoomFactor = max(0.001, newValue)
+      setNeedsDisplay()
+    }
+  }
 
   deinit {
     vertexBuffer = nil
@@ -181,10 +193,12 @@ final class MetallicLayer: CAMetalLayer, Background {
   }
 
   // MARK: - Initialization
-  init(frame: CGRect, fruit: Fruit, contentsScale: CGFloat) {
+  init(frame: CGRect, fruit: Fruit, leaf: Leaf, contentsScale: CGFloat) {
     super.init()
     self.frame = frame
     self.contentsScale = contentsScale
+    self.currentFruit = fruit
+    self.currentLeaf = leaf
     self.pixelFormat = .bgra8Unorm
     self.isOpaque = true
     self.framebufferOnly = true
@@ -204,6 +218,7 @@ final class MetallicLayer: CAMetalLayer, Background {
 
     // Presentation copies should only copy plain Swift state.
     self.totalElapsedTime = other.totalElapsedTime
+    self.metallicZoomFactor = other.metallicZoomFactor
   }
 
   private func setupMetal() {
@@ -248,16 +263,19 @@ final class MetallicLayer: CAMetalLayer, Background {
   }
 
   private weak var currentFruit: Fruit?
+  private weak var currentLeaf: Leaf?
 
   // MARK: - Background Protocol
-  func update(frame: NSRect, fruit: Fruit) {
+  func update(frame: NSRect, fruit: Fruit, leaf: Leaf) {
     currentFruit = fruit
+    currentLeaf = leaf
     setFrameAndDrawableSizeWithoutAnimation(frame)
     setNeedsDisplay()
   }
 
-  func config(fruit: Fruit) {
+  func config(fruit: Fruit, leaf: Leaf) {
     currentFruit = fruit
+    currentLeaf = leaf
     setNeedsDisplay()
   }
 
@@ -288,8 +306,8 @@ final class MetallicLayer: CAMetalLayer, Background {
       Float(texture.width) * 0.25,
       Float(texture.height) * 0.25
     )
-    if let fruit = currentFruit {
-      let body = fruit.transformedPath.bounds
+    if let fruit = currentFruit, let leaf = currentLeaf {
+      let body = fruit.bounds(including: leaf)
       let centerX = body.midX * cs
       let centerY = (bounds.height - body.midY) * cs
       bodyCenterPx = SIMD2<Float>(Float(centerX), Float(centerY))
@@ -303,7 +321,8 @@ final class MetallicLayer: CAMetalLayer, Background {
       resolution: SIMD2<Float>(Float(texture.width), Float(texture.height)),
       body_center_px: bodyCenterPx,
       body_half_px: bodyHalfPx,
-      time: Float(totalElapsedTime)
+      time: Float(totalElapsedTime),
+      zoom_factor: Float(metallicZoomFactor)
     )
 
     let renderPassDescriptor = MTLRenderPassDescriptor()
@@ -321,11 +340,10 @@ final class MetallicLayer: CAMetalLayer, Background {
     }
 
     renderEncoder.setRenderPipelineState(pipelineState)
-    if let fruit = currentFruit {
-      let body = fruit.transformedPath.bounds
-      let leafExtra = fruit.maxDimen() * 0.231
+    if let fruit = currentFruit, let leaf = currentLeaf {
+      let body = fruit.bounds(including: leaf)
       let fb = CGRect(x: body.minX - 4, y: body.minY - 4,
-                       width: body.width + 8, height: body.height + 8 + leafExtra)
+                       width: body.width + 8, height: body.height + 8)
       let cs = contentsScale
       let sx = max(0, Int(fb.minX * cs))
       let sy = max(0, Int((bounds.height - fb.maxY) * cs))

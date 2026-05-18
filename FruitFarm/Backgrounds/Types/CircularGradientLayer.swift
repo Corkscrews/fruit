@@ -175,12 +175,14 @@ final class MetalCircularGradientLayer: CAMetalLayer, Background {
   }
 
   // MARK: - Initialization
-  init(frame: CGRect, fruit: Fruit, contentsScale: CGFloat) { // Frame is CGRect for CALayer
-    self.currentFruitMaxDimension = fruit.maxDimen()
+  init(frame: CGRect, fruit: Fruit, leaf: Leaf, contentsScale: CGFloat) { // Frame is CGRect for CALayer
+    self.currentFruitMaxDimension = fruit.maxDimen(including: leaf)
     super.init()
 
     self.frame = frame
     self.contentsScale = contentsScale
+    self.currentFruit = fruit
+    self.currentLeaf = leaf
     self.pixelFormat = .bgra8Unorm
     self.isOpaque = true // Assuming it's a background
     self.framebufferOnly = true // Performance optimization
@@ -275,18 +277,21 @@ final class MetalCircularGradientLayer: CAMetalLayer, Background {
   }
 
   private weak var currentFruit: Fruit?
+  private weak var currentLeaf: Leaf?
 
   // MARK: - Background Protocol
-  func update(frame: NSRect, fruit: Fruit) {
+  func update(frame: NSRect, fruit: Fruit, leaf: Leaf) {
     currentFruit = fruit
+    currentLeaf = leaf
     setFrameAndDrawableSizeWithoutAnimation(frame)
-    self.currentFruitMaxDimension = fruit.maxDimen()
+    self.currentFruitMaxDimension = fruit.maxDimen(including: leaf)
     setNeedsDisplay()
   }
 
-  func config(fruit: Fruit) {
+  func config(fruit: Fruit, leaf: Leaf) {
     currentFruit = fruit
-    self.currentFruitMaxDimension = fruit.maxDimen()
+    currentLeaf = leaf
+    self.currentFruitMaxDimension = fruit.maxDimen(including: leaf)
     setNeedsDisplay()
   }
 
@@ -329,11 +334,10 @@ final class MetalCircularGradientLayer: CAMetalLayer, Background {
     }
 
     configureRenderEncoder(renderEncoder, uniforms: &uniforms)
-    if let fruit = currentFruit {
-      let body = fruit.transformedPath.bounds
-      let leafExtra = fruit.maxDimen() * 0.231
+    if let fruit = currentFruit, let leaf = currentLeaf {
+      let body = fruit.bounds(including: leaf)
       let fb = CGRect(x: body.minX - 4, y: body.minY - 4,
-                       width: body.width + 8, height: body.height + 8 + leafExtra)
+                       width: body.width + 8, height: body.height + 8)
       let cs = contentsScale
       let sx = max(0, Int(fb.minX * cs))
       let sy = max(0, Int((bounds.height - fb.maxY) * cs))

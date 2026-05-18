@@ -29,6 +29,7 @@ struct GlassUniforms {
     float2 body_half_px;
     float time;
     float color_phase;
+    float zoom_factor;
 };
 
 float glass_hash(float2 p) {
@@ -71,9 +72,10 @@ fragment float4 fragment_shader_glass(
     // Apple-relative coordinates: roughly [-1, 1] across the fruit body.
     // lp.y > 0 is the lower half of the fruit (Metal y-down).
     float2 half_px = max(uniforms.body_half_px, float2(1.0));
-    float2 lp = (in.position.xy - uniforms.body_center_px) / half_px;
+    float zoom = max(uniforms.zoom_factor, 0.001);
+    float2 lp = ((in.position.xy - uniforms.body_center_px) / half_px) / zoom;
 
-    float loop = fract(uniforms.time / 14.0);
+    float loop = fract(uniforms.time / 36.0);
     float a = loop * 6.28318530718;
 
     float2 skew = float2(
@@ -90,26 +92,38 @@ fragment float4 fragment_shader_glass(
     float edgeWeight = smoothstep(0.52, 1.08, edgeShape);
     float rim = smoothstep(0.72, 1.02, edgeShape) * (1.0 - smoothstep(1.02, 1.26, edgeShape));
 
-    float stressA = sin(bend.x * 5.1 + bend.y * 1.9 + sin(a) * 1.4);
-    float stressB = sin(bend.y * 4.3 - bend.x * 2.7 + cos(a * 2.0) * 1.1);
-    float stressC = sin((bend.x + bend.y * 0.6) * 7.2 + sin(a * 3.0) * 0.9);
-    float baseBand = exp(-pow((lp.y - 0.72 - 0.08 * sin(lp.x * 4.0 + sin(a))) * 4.0, 2.0));
-    float retardance = 4.0
+    float2 chromaOffset = bend * (0.08 + edgeWeight * 0.16 + rim * 0.10);
+    float2 bendR = bend + chromaOffset;
+    float2 bendG = bend;
+    float2 bendB = bend - chromaOffset;
+    float3 channelX = float3(bendR.x, bendG.x, bendB.x);
+    float3 channelY = float3(bendR.y, bendG.y, bendB.y);
+
+    float3 channelEdgeShape = max(abs(channelX * 0.82 + 0.08 * sin(channelY * 6.0)),
+                                  abs(channelY * 0.92 - 0.10 * sin(channelX * 5.0)));
+    float3 channelEdgeWeight = smoothstep(float3(0.52), float3(1.08), channelEdgeShape);
+    float3 channelRim = smoothstep(float3(0.72), float3(1.02), channelEdgeShape)
+        * (float3(1.0) - smoothstep(float3(1.02), float3(1.26), channelEdgeShape));
+    float3 stressA = sin(channelX * 5.1 + channelY * 1.9 + sin(a) * 1.4);
+    float3 stressB = sin(channelY * 4.3 - channelX * 2.7 + cos(a * 2.0) * 1.1);
+    float3 stressC = sin((channelX + channelY * 0.6) * 7.2 + sin(a * 3.0) * 0.9);
+    float3 baseBand = exp(-pow((channelY - 0.72 - 0.08 * sin(channelX * 4.0 + sin(a))) * 4.0, float3(2.0)));
+    float3 retardance = float3(4.0)
         + stressA * 2.0
         + stressB * 1.7
         + stressC * 0.9
-        + edgeWeight * 8.5
+        + channelEdgeWeight * 8.5
         + baseBand * 5.0
         + sin(a) * 1.2;
 
     float3 spectrum = 0.5 + 0.5 * cos(
         retardance * float3(0.92, 1.19, 1.55) + float3(0.0, 2.1, 4.35)
     );
-    spectrum = pow(clamp(spectrum, 0.0, 1.0), float3(0.38));
+    spectrum = pow(clamp(spectrum, 0.0, 1.0), float3(0.48));
 
     float3 baseGlass = float3(0.085, 0.075, 0.105);
-    float3 color = baseGlass + spectrum * (0.48 + edgeWeight * 0.78);
-    color += spectrum * rim * 2.10;
+    float3 color = baseGlass + spectrum * (0.48 + channelEdgeWeight * 0.78);
+    color += spectrum * channelRim * 2.10;
 
     float2 dRed = float2(0.10 * cos(a), 0.05 * sin(a * 2.0));
     float2 dCyan = float2(0.06 * sin(a * 2.0 + 0.8), 0.10 * cos(a));
@@ -136,11 +150,8 @@ fragment float4 fragment_shader_glass(
     float stressRibbon = exp(-pow((bend.y - 0.16 + 0.16 * sin(bend.x * 3.0 + a)) * 3.0, 2.0));
     color += spectrum * stressRibbon * 0.45;
 
-    // Soft scanline modulation typical of polarized LCD viewing.
-    float scan = sin(in.position.y * 1.8) * 0.5 + 0.5;
-    color *= 1.08 + 0.08 * scan;
-    color = pow(color, float3(0.88));
-
+    color = pow(max(color, 0.0), float3(0.82));
+    color = mix(color, color / (1.0 + color * 0.22), smoothstep(float3(1.0), float3(1.8), color));
     color = clamp(color, 0.0, 1.0);
     return float4(color, 1.0);
 }
@@ -153,6 +164,7 @@ private struct MetalGlassFragmentUniforms {
   var body_half_px: SIMD2<Float>
   var time: Float
   var color_phase: Float
+  var zoom_factor: Float
   // swiftlint:enable identifier_name
 }
 
@@ -170,6 +182,15 @@ final class GlassLayer: CAMetalLayer, Background {
   private var colorPhase: CGFloat = 0
   private var lastUpdateTime: CGFloat = 0
   private let minUpdateInterval: CGFloat = 1.0 / 30.0
+  private var glassZoomFactor: CGFloat = 5.0
+
+  var zoomFactor: CGFloat {
+    get { glassZoomFactor }
+    set {
+      glassZoomFactor = max(0.001, newValue)
+      setNeedsDisplay()
+    }
+  }
 
   deinit {
     vertexBuffer = nil
@@ -179,10 +200,12 @@ final class GlassLayer: CAMetalLayer, Background {
   }
 
   // MARK: - Initialization
-  init(frame: CGRect, fruit: Fruit, contentsScale: CGFloat) {
+  init(frame: CGRect, fruit: Fruit, leaf: Leaf, contentsScale: CGFloat) {
     super.init()
     self.frame = frame
     self.contentsScale = contentsScale
+    self.currentFruit = fruit
+    self.currentLeaf = leaf
     self.pixelFormat = .bgra8Unorm
     self.isOpaque = true
     self.framebufferOnly = true
@@ -203,6 +226,7 @@ final class GlassLayer: CAMetalLayer, Background {
     // Only copy plain Swift state; presentation copies cannot touch Metal layer state safely.
     self.totalElapsedTime = other.totalElapsedTime
     self.colorPhase = other.colorPhase
+    self.glassZoomFactor = other.glassZoomFactor
   }
 
   private func setupMetal() {
@@ -247,16 +271,19 @@ final class GlassLayer: CAMetalLayer, Background {
   }
 
   private weak var currentFruit: Fruit?
+  private weak var currentLeaf: Leaf?
 
   // MARK: - Background Protocol
-  func update(frame: NSRect, fruit: Fruit) {
+  func update(frame: NSRect, fruit: Fruit, leaf: Leaf) {
     currentFruit = fruit
+    currentLeaf = leaf
     setFrameAndDrawableSizeWithoutAnimation(frame)
     setNeedsDisplay()
   }
 
-  func config(fruit: Fruit) {
+  func config(fruit: Fruit, leaf: Leaf) {
     currentFruit = fruit
+    currentLeaf = leaf
     setNeedsDisplay()
   }
 
@@ -288,8 +315,8 @@ final class GlassLayer: CAMetalLayer, Background {
       Float(texture.width) * 0.25,
       Float(texture.height) * 0.25
     )
-    if let fruit = currentFruit {
-      let body = fruit.transformedPath.bounds
+    if let fruit = currentFruit, let leaf = currentLeaf {
+      let body = fruit.bounds(including: leaf)
       let centerX = body.midX * cs
       // Convert NSRect (origin bottom-left) to Metal pixel coords (origin top-left).
       let centerY = (bounds.height - body.midY) * cs
@@ -305,7 +332,8 @@ final class GlassLayer: CAMetalLayer, Background {
       body_center_px: bodyCenterPx,
       body_half_px: bodyHalfPx,
       time: Float(totalElapsedTime),
-      color_phase: Float(colorPhase)
+      color_phase: Float(colorPhase),
+      zoom_factor: Float(glassZoomFactor)
     )
 
     let renderPassDescriptor = MTLRenderPassDescriptor()
@@ -323,11 +351,10 @@ final class GlassLayer: CAMetalLayer, Background {
     }
 
     renderEncoder.setRenderPipelineState(pipelineState)
-    if let fruit = currentFruit {
-      let body = fruit.transformedPath.bounds
-      let leafExtra = fruit.maxDimen() * 0.231
+    if let fruit = currentFruit, let leaf = currentLeaf {
+      let body = fruit.bounds(including: leaf)
       let fb = CGRect(x: body.minX - 4, y: body.minY - 4,
-                       width: body.width + 8, height: body.height + 8 + leafExtra)
+                       width: body.width + 8, height: body.height + 8)
       let cs = contentsScale
       let sx = max(0, Int(fb.minX * cs))
       let sy = max(0, Int((bounds.height - fb.maxY) * cs))

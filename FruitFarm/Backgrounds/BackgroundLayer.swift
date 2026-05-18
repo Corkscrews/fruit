@@ -22,11 +22,11 @@ final class BackgroundLayer: CAShapeLayer, Background {
     updateBezierPath()
   }
 
-  func config(fruit: Fruit) { }
+  func config(fruit: Fruit, leaf: Leaf) { }
 
   func update(deltaTime: CGFloat) { }
 
-  func update(frame: NSRect, fruit: Fruit) {
+  func update(frame: NSRect, fruit: Fruit, leaf: Leaf) {
     setFrameWithoutAnimation(frame)
     updateBezierPath()
   }

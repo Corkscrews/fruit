@@ -235,6 +235,7 @@ final class WarpLayer: CAMetalLayer, Background {
 
   // MARK: - Rendering Area
   private weak var currentFruit: Fruit?
+  private weak var currentLeaf: Leaf?
 
   // MARK: - Speed Variation
   private var currentSpeed: CGFloat = 0.1
@@ -252,10 +253,12 @@ final class WarpLayer: CAMetalLayer, Background {
   }
 
   // MARK: - Initialization
-  init(frame: CGRect, fruit: Fruit, contentsScale: CGFloat) {
+  init(frame: CGRect, fruit: Fruit, leaf: Leaf, contentsScale: CGFloat) {
     super.init()
     self.frame = frame
     self.contentsScale = contentsScale
+    self.currentFruit = fruit
+    self.currentLeaf = leaf
     self.pixelFormat = .bgra8Unorm
     self.isOpaque = true
     self.framebufferOnly = true
@@ -336,15 +339,17 @@ final class WarpLayer: CAMetalLayer, Background {
   }
 
   // MARK: - Background Protocol
-  func update(frame: NSRect, fruit: Fruit) {
+  func update(frame: NSRect, fruit: Fruit, leaf: Leaf) {
     currentFruit = fruit
+    currentLeaf = leaf
     setFrameAndDrawableSizeWithoutAnimation(frame)
     updateDrawableSize(for: frame)
     setNeedsDisplay()
   }
 
-  func config(fruit: Fruit) {
+  func config(fruit: Fruit, leaf: Leaf) {
     currentFruit = fruit
+    currentLeaf = leaf
     setNeedsDisplay()
   }
 
@@ -489,11 +494,10 @@ final class WarpLayer: CAMetalLayer, Background {
     }
 
     renderEncoder.setRenderPipelineState(pipelineState)
-    if let fruit = currentFruit {
-      let body = fruit.transformedPath.bounds
-      let leafExtra = fruit.maxDimen() * 0.231
+    if let fruit = currentFruit, let leaf = currentLeaf {
+      let body = fruit.bounds(including: leaf)
       let fb = CGRect(x: body.minX - 4, y: body.minY - 4,
-                       width: body.width + 8, height: body.height + 8 + leafExtra)
+                       width: body.width + 8, height: body.height + 8)
       let scaleX = CGFloat(resW) / max(bounds.width, 1)
       let scaleY = CGFloat(resH) / max(bounds.height, 1)
       let sx = max(0, Int(fb.minX * scaleX))
