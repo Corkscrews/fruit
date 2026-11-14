@@ -5,8 +5,12 @@ import FruitFarm
 
 /// Creates and configures the preferences window with its view controller.
 /// - Returns: A configured NSWindow instance containing the preferences interface.
-func createPreferencesWindow(preferencesRepository: PreferencesRepository) -> NSWindow {
+func createPreferencesWindow(
+  preferencesRepository: PreferencesRepository,
+  onFruitModeChanged: ((FruitMode) -> Void)? = nil
+) -> NSWindow {
   let viewController = PreferencesViewController(preferencesRepository: preferencesRepository)
+  viewController.onFruitModeChanged = onFruitModeChanged
   let window = NSWindow(contentViewController: viewController)
   window.title = "Preferences"
   window.styleMask.insert(.resizable)
@@ -20,6 +24,9 @@ func createPreferencesWindow(preferencesRepository: PreferencesRepository) -> NS
 final class PreferencesViewController: NSViewController, NSTableViewDataSource, NSTableViewDelegate {
 
   weak var window: NSWindow?
+
+  /// Lets the owning screensaver view follow the selection live.
+  var onFruitModeChanged: ((FruitMode) -> Void)?
 
   let preferencesRepository: PreferencesRepository
 
@@ -37,6 +44,7 @@ final class PreferencesViewController: NSViewController, NSTableViewDataSource, 
   private lazy var metalView: MetalView = {
     let metalView = MetalView(frame: view.bounds, frameRate: 1, contrast: 1.0, brightness: 1.0)
     metalView.autoresizingMask = [.width, .height]
+    metalView.isRenderingPaused = true // unpaused in viewDidAppear
     return metalView
   }()
 
@@ -67,6 +75,7 @@ final class PreferencesViewController: NSViewController, NSTableViewDataSource, 
       self?.fruitMode = fruitMode
       self?.fruitView.update(mode: fruitMode)
       self?.preferencesRepository.updateDefaultFruitMode(fruitMode)
+      self?.onFruitModeChanged?(fruitMode)
     }
     return controlsView
   }()
@@ -168,11 +177,29 @@ final class PreferencesViewController: NSViewController, NSTableViewDataSource, 
 
   /// Called after the view is loaded.
   /// Sets up the initial frame for the fruit view.
-  override func viewDidLoad() {
-    super.viewDidLoad()
-//    fruitView.frame = self.view.bounds
-//    metalView.frame = self.view.bounds
-    addScreenDidChangeNotification()
+  /// The window is only known here; viewDidLoad runs before the view is in it.
+  override func viewDidAppear() {
+    super.viewDidAppear()
+    if let window = view.window {
+      NotificationCenter.default.addObserver(
+        self,
+        selector: #selector(screenDidChange),
+        name: NSWindow.didChangeScreenNotification,
+        object: window
+      )
+    }
+    metalView.isRenderingPaused = false
+    screenDidChange()
+  }
+
+  /// The window is cached and never deallocated, so stop all rendering on close.
+  override func viewDidDisappear() {
+    super.viewDidDisappear()
+    NotificationCenter.default.removeObserver(
+      self, name: NSWindow.didChangeScreenNotification, object: nil
+    )
+    metalView.isRenderingPaused = true
+    displayLinkAnimator.stop()
   }
 
   override func viewDidLayout() {
@@ -191,7 +218,7 @@ final class PreferencesViewController: NSViewController, NSTableViewDataSource, 
       self?.fruitView.animateOneFrame(framesPerSecond: fps)
       self?.updateDebugStatsIfNeeded(fps: fps)
     }
-    displayLinkAnimator.start(on: view.window?.screen)
+    // Started in viewDidAppear, once the window's screen is known.
   }
 
   private func updateDebugStatsIfNeeded(fps: Int) {
@@ -205,18 +232,6 @@ final class PreferencesViewController: NSViewController, NSTableViewDataSource, 
   }
 
   // MARK: - EDR
-
-  private func addScreenDidChangeNotification() {
-    checkEDR()
-    if let window = view.window {
-      NotificationCenter.default.addObserver(
-        self,
-        selector: #selector(screenDidChange),
-        name: NSWindow.didChangeScreenNotification,
-        object: window
-      )
-    }
-  }
 
   @objc
   private func screenDidChange() {
@@ -253,7 +268,8 @@ final class PreferencesControlsView: NSView {
   /// Includes options for all available background types plus a random option.
   private lazy var optionsComboBox: NSComboBox = {
     let comboBox = NSComboBox()
-    comboBox.addItems(withObjectValues: buildMenuItems())
+    let items = buildMenuItems()
+    comboBox.addItems(withObjectValues: items)
 
     let index: Int
     switch fruitMode {
@@ -263,6 +279,7 @@ final class PreferencesControlsView: NSView {
       index = FruitType.allCases.firstIndex(of: fruitType) ?? 0
     }
     comboBox.selectItem(at: index + 1)
+    comboBox.stringValue = items[index + 1] // selectItem(at:) doesn't update the text field
     comboBox.isEditable = false
     comboBox.translatesAutoresizingMaskIntoConstraints = false
 

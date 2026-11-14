@@ -91,6 +91,8 @@ final class DebugStatsView: NSView {
           thread_info(threads[i], thread_flavor_t(THREAD_BASIC_INFO), $0, &infoCount)
         }
       }
+      // task_threads hands us a send right per thread; release it or it leaks.
+      mach_port_deallocate(mach_task_self_, threads[i])
       if kr == KERN_SUCCESS && (info.flags & TH_FLAGS_IDLE) == 0 {
         totalCPU += Double(info.cpu_usage) / Double(TH_USAGE_SCALE) * 100.0
       }

@@ -80,9 +80,10 @@ final class DisplayLinkAnimator {
         let ctx = Unmanaged<LegacyContext>.fromOpaque(userInfo!).takeUnretainedValue()
         guard let animator = ctx.animator else { return kCVReturnSuccess }
 
-        let timeScale = Int64(inNow.pointee.videoTimeScale)
-        let frameDuration = inNow.pointee.videoRefreshPeriod
-        let fps: Int = frameDuration > 0 ? Int(timeScale / frameDuration) : 60
+        let timeScale = Double(inNow.pointee.videoTimeScale)
+        let frameDuration = Double(inNow.pointee.videoRefreshPeriod)
+        // Round like the CADisplayLink path; never 0 (FruitView divides by it).
+        let fps: Int = frameDuration > 0 ? max(1, Int((timeScale / frameDuration).rounded())) : 60
 
         DispatchQueue.main.async { [weak animator] in
           animator?.onFrame?(fps)

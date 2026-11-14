@@ -23,7 +23,8 @@ final class FruitScreensaver: ScreenSaverView {
 
   private let preferencesRepository: PreferencesRepository = PreferencesRepositoryImpl()
   private lazy var preferencesWindowController = createPreferencesWindow(
-    preferencesRepository: self.preferencesRepository
+    preferencesRepository: self.preferencesRepository,
+    onFruitModeChanged: { [weak self] mode in self?.fruitView.update(mode: mode) }
   )
 
   deinit {
@@ -49,7 +50,6 @@ final class FruitScreensaver: ScreenSaverView {
     setupDisplayLinkAnimator()
     if !isPreview {
       setupMetalView()
-      addScreenDidChangeNotification()
     }
     addObserverWillStopNotification()
     if DebugStatsView.isEnabled {
@@ -63,6 +63,8 @@ final class FruitScreensaver: ScreenSaverView {
       mode: isPreview ? .preview : .default
     )
     fruitView.autoresizingMask = [.width, .height]
+    // The host process is long-lived; pick up changes written by other instances.
+    preferencesRepository.reload()
     fruitView.update(mode: preferencesRepository.defaultFruitMode())
     self.addSubview(fruitView)
   }
@@ -73,7 +75,7 @@ final class FruitScreensaver: ScreenSaverView {
       self.fruitView.animateOneFrame(framesPerSecond: fps)
       self.updateDebugStatsIfNeeded(fps: fps)
     }
-    displayLinkAnimator.start(on: window?.screen)
+    // Started in viewDidMoveToWindow, once the real screen is known.
   }
 
   private func setupMetalView() {
@@ -85,6 +87,7 @@ final class FruitScreensaver: ScreenSaverView {
     )
     metalView!.alphaValue = 0.01
     metalView!.autoresizingMask = [.width, .height]
+    metalView!.isRenderingPaused = true // unpaused in viewDidMoveToWindow
     metalView!.onReady = { [weak self] in
       guard let self = self, let metalView = self.metalView else { return }
       DispatchQueue.main.async {
@@ -125,14 +128,24 @@ final class FruitScreensaver: ScreenSaverView {
 
   override func viewDidMoveToWindow() {
     super.viewDidMoveToWindow()
-    if window == nil {
+    NotificationCenter.default.removeObserver(
+      self, name: NSWindow.didChangeScreenNotification, object: nil
+    )
+    if let window = window {
+      NotificationCenter.default.addObserver(
+        self,
+        selector: #selector(screenDidChange),
+        name: NSWindow.didChangeScreenNotification,
+        object: window
+      )
+      isPaused = false
+      metalView?.isRenderingPaused = false
+      checkEDR()
+      displayLinkAnimator.start(on: window.screen)
+    } else {
       isPaused = true
       metalView?.isRenderingPaused = true
       displayLinkAnimator.stop()
-    } else {
-      isPaused = false
-      metalView?.isRenderingPaused = false
-      displayLinkAnimator.start(on: window?.screen)
     }
   }
 
@@ -161,25 +174,12 @@ final class FruitScreensaver: ScreenSaverView {
 
   @objc
   private func willStop(_ aNotification: Notification) {
+    // The System Settings thumbnail must keep animating when the real saver stops.
+    guard !isPreview else { return }
     isPaused = true
     metalView?.isRenderingPaused = true
     displayLinkAnimator.stop()
-
-    if !isPreview {
-      NSApplication.shared.terminate(nil)
-    }
-  }
-
-  private func addScreenDidChangeNotification() {
-    checkEDR()
-    if let window = window {
-      NotificationCenter.default.addObserver(
-        self,
-        selector: #selector(screenDidChange),
-        name: NSWindow.didChangeScreenNotification,
-        object: window
-      )
-    }
+    NSApplication.shared.terminate(nil)
   }
 
   @objc

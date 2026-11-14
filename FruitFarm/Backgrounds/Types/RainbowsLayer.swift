@@ -2,39 +2,40 @@ import Cocoa
 import QuartzCore
 import Foundation
 
-/// Custom CALayer to draw all colored bars in one pass
+/// Colored bars built once as solid-color sublayers; animation only moves their container,
+/// so nothing is rasterized per frame.
 final class RainbowsLayer: CALayer, Background {
   // MARK: - Constants
-  private static let colorArray: [NSColor] = [
+  private static let colorArray: [CGColor] = [
     NSColor(srgbRed: 67/255, green: 156/255, blue: 214/255, alpha: 1), // BLUE
     NSColor(srgbRed: 139/255, green: 69/255, blue: 147/255, alpha: 1), // PURPLE
     NSColor(srgbRed: 207/255, green: 72/255, blue: 69/255, alpha: 1), // RED
     NSColor(srgbRed: 231/255, green: 135/255, blue: 59/255, alpha: 1), // ORANGE
     NSColor(srgbRed: 243/255, green: 185/255, blue: 75/255, alpha: 1), // YELLOW
     NSColor(srgbRed: 120/255, green: 184/255, blue: 86/255, alpha: 1)  // GREEN
-  ]
-  private static let barCountPerCycle = 6
-  private static let visibleLinesCount = 6
-  private static let totalLinesMultiplier = 3
+  ].map(\.cgColor)
+  private static let cycleCount = 3
   private static let barSpeed: CGFloat = 3 // points per second
 
   // MARK: - Properties
-  private var linePaths: [NSBezierPath] = []
-  private var colorsForPath: [NSColor] = []
-  private var currentLineOffsets: [CGFloat] = []
-  private var heightOfBars: CGFloat = 0
-  private var lastUpdateTime: CGFloat = 0
-  private let minUpdateInterval: CGFloat = 1.0 / 30.0 // Throttle to 30 FPS max
-
-  private var totalLines: Int {
-    Self.visibleLinesCount * Self.totalLinesMultiplier
-  }
+  /// Zero-size container at the origin, so bars use this layer's coordinates.
+  private let stripes = CALayer()
+  /// Height of one full color cycle (six bars), equal to the fruit height.
+  private var cycleHeight: CGFloat = 0
+  private var offset: CGFloat = 0
 
   // MARK: - Init
   init(frame: NSRect, fruit: Fruit, leaf: Leaf, contentsScale: CGFloat) {
     super.init()
     self.frame = frame
     self.contentsScale = contentsScale
+    for index in 0..<(Self.colorArray.count * Self.cycleCount) {
+      let bar = CALayer()
+      bar.backgroundColor = Self.colorArray[index % Self.colorArray.count]
+      bar.allowsEdgeAntialiasing = true
+      stripes.addSublayer(bar)
+    }
+    addSublayer(stripes)
     config(fruit: fruit, leaf: leaf)
   }
 
@@ -55,69 +56,36 @@ final class RainbowsLayer: CALayer, Background {
     config(fruit: fruit, leaf: leaf)
   }
 
-  /// Creates the paths and assigns colors for each colored bar.
+  /// Lays out the bars: three cycles starting two fruit-heights below the middle, so the
+  /// band scrolling up by 0..<cycleHeight always covers the fruit.
   func config(fruit: Fruit, leaf: Leaf) {
-    let fruitBounds = fruit.bounds(including: leaf)
-    let width = bounds.size.width
-    let originX: CGFloat = 0.0
-    let originY = fruitBounds.size.height
-    let middleY = bounds.size.height / 2
+    cycleHeight = fruit.bounds(including: leaf).height
+    let barHeight = cycleHeight / CGFloat(Self.colorArray.count)
+    let startY = bounds.midY - 2 * cycleHeight
+    offset = cycleHeight > 0 ? offset.truncatingRemainder(dividingBy: cycleHeight) : 0
 
-    heightOfBars = fruitBounds.size.height / CGFloat(Self.barCountPerCycle)
-
-    var lastY = middleY - originY
-    lastY -= heightOfBars * CGFloat(Self.barCountPerCycle)
-
-    linePaths = []
-    colorsForPath = []
-    if currentLineOffsets.count != totalLines {
-      currentLineOffsets = Array(repeating: 0, count: totalLines)
+    CATransaction.begin()
+    CATransaction.setDisableActions(true)
+    for (index, bar) in (stripes.sublayers ?? []).enumerated() {
+      // +1 overlaps the next bar to hide seams
+      bar.frame = CGRect(
+        x: 0,
+        y: startY + CGFloat(index) * barHeight,
+        width: bounds.width,
+        height: barHeight + 1
+      )
     }
-
-    for index in 0..<totalLines {
-      let path = NSBezierPath()
-      path.move(to: NSPoint(x: originX, y: lastY))
-      path.line(to: NSPoint(x: originX + width, y: lastY))
-      path.line(to: NSPoint(x: originX + width, y: lastY + heightOfBars + 1))
-      path.line(to: NSPoint(x: originX, y: lastY + heightOfBars + 1))
-      linePaths.append(path)
-      colorsForPath.append(Self.colorArray[index % Self.colorArray.count])
-      lastY += heightOfBars
-    }
+    stripes.setAffineTransform(CGAffineTransform(translationX: 0, y: offset))
+    CATransaction.commit()
   }
 
-  /// Update the animation state for all bars.
+  /// Scrolls the bars up, wrapping every full color cycle.
   func update(deltaTime: CGFloat) {
-    lastUpdateTime += deltaTime
-
-    for index in 0..<totalLines {
-      let currentOffset = currentLineOffsets[index]
-      let diff = Self.barSpeed * deltaTime
-      let maxOffset = heightOfBars * CGFloat(Self.visibleLinesCount)
-      let newOffset = currentOffset + diff
-      currentLineOffsets[index] = newOffset > maxOffset ? 0 : newOffset
-    }
-
-    // Throttle display updates to reduce CPU usage
-    if lastUpdateTime >= minUpdateInterval {
-      lastUpdateTime = 0
-      setNeedsDisplay()
-    }
-  }
-
-  // MARK: - Drawing
-  override func draw(in ctx: CGContext) {
-    guard !linePaths.isEmpty, !colorsForPath.isEmpty, !currentLineOffsets.isEmpty else { return }
-    for index in 0..<min(linePaths.count, colorsForPath.count, currentLineOffsets.count) {
-      let path = linePaths[index]
-      let color = colorsForPath[index]
-      let offset = currentLineOffsets[index]
-      ctx.saveGState()
-      ctx.translateBy(x: 0, y: offset)
-      ctx.addPath(path.quartzPath)
-      ctx.setFillColor(color.cgColor)
-      ctx.fillPath()
-      ctx.restoreGState()
-    }
+    guard cycleHeight > 0 else { return }
+    offset = (offset + Self.barSpeed * deltaTime).truncatingRemainder(dividingBy: cycleHeight)
+    CATransaction.begin()
+    CATransaction.setDisableActions(true)
+    stripes.setAffineTransform(CGAffineTransform(translationX: 0, y: offset))
+    CATransaction.commit()
   }
 }
