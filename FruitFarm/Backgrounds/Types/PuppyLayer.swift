@@ -2,6 +2,7 @@ import Cocoa
 import QuartzCore
 import Foundation
 import MetalKit
+import Accelerate
 
 private let metalPuppyShaderSource = """
 using namespace metal;
@@ -140,6 +141,7 @@ final class PuppyLayer: CAMetalLayer, Background {
   private var heightTexture: MTLTexture?
   /// Logo rect (points) the height texture was baked for; rebaked when it changes.
   private var bakedRect = CGRect.null
+  private var isBaking = false
 
   // MARK: - Animation
   private var totalElapsedTime: CGFloat = 0
@@ -225,8 +227,9 @@ final class PuppyLayer: CAMetalLayer, Background {
   /// shader reads: R = bevel ramp from an exact distance transform (so the round-over
   /// starts right on the outline), G = wide blur for the crown.
   /// Static and non-private: GlassLayer bakes the same map.
+  /// Takes path copies, not Fruit/Leaf, so it can run off the main thread.
   static func bakeHeightTexture(
-    device: MTLDevice?, rect: CGRect, contentsScale cs: CGFloat, fruit: Fruit, leaf: Leaf
+    device: MTLDevice?, rect: CGRect, contentsScale cs: CGFloat, fruitPath: CGPath, leafPath: CGPath
   ) -> MTLTexture? {
     let width = Int(rect.width * cs)
     let height = Int(rect.height * cs)
@@ -243,12 +246,12 @@ final class PuppyLayer: CAMetalLayer, Background {
     context.scaleBy(x: bigScale, y: bigScale)
     context.translateBy(x: -rect.minX, y: -rect.minY)
     context.setFillColor(gray: 1, alpha: 1)
-    context.addPath(fruit.transformedPath.quartzPath)
-    context.addPath(leaf.transformedPath.quartzPath)
+    context.addPath(fruitPath)
+    context.addPath(leafPath)
     context.fillPath()
     guard let maskData = context.data else { return nil }
 
-    let logoWidth = Float(fruit.transformedPath.bounds.width * bigScale)
+    let logoWidth = Float(fruitPath.boundingBoxOfPath.width * bigScale)
     let maskBytes = maskData.bindMemory(to: UInt8.self, capacity: context.bytesPerRow * bigH)
     var ramp = [Float](repeating: 0, count: bigW * bigH)
     var crown = [Float](repeating: 0, count: bigW * bigH)
@@ -268,7 +271,7 @@ final class PuppyLayer: CAMetalLayer, Background {
 
     // Wide dome for the body only, so its centre isn't flat. Re-fill the mask with just the leaf.
     context.clear(CGRect(x: rect.minX, y: rect.minY, width: rect.width, height: rect.height))
-    context.addPath(leaf.transformedPath.quartzPath)
+    context.addPath(leafPath)
     context.fillPath()
     var dome = [Float](repeating: 0, count: bigW * bigH)
     var leafDistance = [Float](repeating: 1e20, count: bigW * bigH)
@@ -338,27 +341,33 @@ final class PuppyLayer: CAMetalLayer, Background {
     // All passes run in a padded line so the spill past the edge is kept; cropping it
     // between passes left straight creases. Exact, since rows outside the grid are empty.
     let pad = passes * radius
-    let norm = 1 / Double(2 * radius + 1)
-    var src = [Double](repeating: 0, count: max(width, height) + 2 * pad)
+    let window = vDSP_Length(2 * radius + 1)
+    var norm = 1 / Double(window)
+    // vDSP, not Swift loops: this is most of the bake and a debug build ran it ~50x slower.
+    // `radius` extra zeros on each side keep the sliding window inside the buffer.
+    var src = [Double](repeating: 0, count: max(width, height) + 2 * pad + 2 * radius)
     var dst = src
-    func blurLine(start: Int, step: Int, count: Int) {
-      let total = count + 2 * pad
-      for q in 0..<total { src[q] = 0 }
-      for q in 0..<count { src[pad + q] = Double(grid[start + q * step]) }
-      for _ in 0..<passes {
-        var sum: Double = 0
-        for q in 0..<radius { sum += src[q] }
-        for q in 0..<total {
-          if q + radius < total { sum += src[q + radius] }
-          dst[q] = sum * norm
-          if q >= radius { sum -= src[q - radius] }
+    grid.withUnsafeMutableBufferPointer { cells in
+      src.withUnsafeMutableBufferPointer { srcBuffer in
+        dst.withUnsafeMutableBufferPointer { dstBuffer in
+          guard let cells = cells.baseAddress, var from = srcBuffer.baseAddress,
+                var to = dstBuffer.baseAddress else { return }
+          func blurLine(start: Int, step: Int, count: Int) {
+            let total = vDSP_Length(count + 2 * pad)
+            vDSP_vclrD(from, 1, total + 2 * vDSP_Length(radius))
+            vDSP_vspdp(cells + start, step, from + radius + pad, 1, vDSP_Length(count))
+            for _ in 0..<passes {
+              vDSP_vswsumD(from, 1, to + radius, 1, total, window)
+              vDSP_vsmulD(to + radius, 1, &norm, to + radius, 1, total)
+              swap(&from, &to)
+            }
+            vDSP_vdpsp(from + radius + pad, 1, cells + start, step, vDSP_Length(count))
+          }
+          for y in 0..<height { blurLine(start: y * width, step: 1, count: width) }
+          for x in 0..<width { blurLine(start: x, step: width, count: height) }
         }
-        swap(&src, &dst)
       }
-      for q in 0..<count { grid[start + q * step] = Float(src[pad + q]) }
     }
-    for y in 0..<height { blurLine(start: y * width, step: 1, count: width) }
-    for x in 0..<width { blurLine(start: x, step: width, count: height) }
   }
 
   /// Felzenszwalb–Huttenlocher squared Euclidean distance transform, in place.
@@ -436,11 +445,23 @@ final class PuppyLayer: CAMetalLayer, Background {
 
     // The paths are re-transformed after layout, so check here rather than in update(frame:).
     let rect = fruit.bounds(including: leaf).insetBy(dx: -4, dy: -4)
-    if rect != bakedRect {
-      bakedRect = rect
-      heightTexture = PuppyLayer.bakeHeightTexture(
-        device: metalDevice, rect: rect, contentsScale: contentsScale, fruit: fruit, leaf: leaf
-      )
+    if rect != bakedRect && !isBaking {
+      // Baked off the main thread so the app doesn't freeze; the logo stays black until it lands.
+      isBaking = true
+      let device = metalDevice, scale = contentsScale
+      let fruitPath = fruit.transformedPath.quartzPath, leafPath = leaf.transformedPath.quartzPath
+      DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+        let baked = PuppyLayer.bakeHeightTexture(
+          device: device, rect: rect, contentsScale: scale, fruitPath: fruitPath, leafPath: leafPath
+        )
+        DispatchQueue.main.async {
+          guard let self = self else { return }
+          self.heightTexture = baked
+          self.bakedRect = rect
+          self.isBaking = false
+          self.setNeedsDisplay()  // re-checks the rect, in case it changed meanwhile
+        }
+      }
     }
 
     let cs = contentsScale

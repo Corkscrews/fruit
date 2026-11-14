@@ -45,7 +45,8 @@ float3 glass_hue_rotate(float3 c, float a) {
 
 // What sits behind the glass: a polarised-light (photoelastic) sheet with narrow
 // fringes. Its hue travels over time and across the logo so no colour settles.
-float3 glass_backdrop(float2 p, float t) {
+// `edge` is 1 near the outline, 0 at the centre: fringes crowd toward the edges there.
+float3 glass_backdrop(float2 p, float t, float edge) {
     float2 w = p * 1.6;
     w += 0.55 * float2(sin(w.y * 1.5 + t * 0.21), cos(w.x * 1.2 - t * 0.17));
     w += 0.30 * float2(sin(w.y * 2.9 - t * 0.13 + 1.3), cos(w.x * 2.5 + t * 0.19 + 0.7));
@@ -55,12 +56,16 @@ float3 glass_backdrop(float2 p, float t) {
                        0.5 + 0.5 * sin(f * 1.7 + w.y * 1.3));
     // Each period gets its own fringe width (x in 0..1 is the fringe, the rest is plain).
     // Seamless: x is 0 at a period's start and past 1 at its end, both outside the band.
-    float period = floor(f * 2.1);
-    float x = fract(f * 2.1) * mix(1.6, 9.0, fract(sin(period * 12.9898) * 43758.5453));
+    float fq = f * 2.1 * mix(0.85, 1.6, edge);
+    float period = floor(fq);
+    float x = fract(fq) * mix(1.6, 9.0, fract(sin(period * 12.9898) * 43758.5453));
     float3 fringe = mix(float3(1.0, 0.10, 0.62), float3(0.22, 0.28, 1.0), smoothstep(0.20, 0.45, x));
     fringe = mix(fringe, float3(0.15, 0.92, 1.0), smoothstep(0.42, 0.62, x));
     fringe = mix(fringe, float3(1.0, 1.0, 0.72), smoothstep(0.62, 0.85, x));
     float band = smoothstep(0.0, 0.16, x) * (1.0 - smoothstep(0.84, 1.0, x));
+    // Toward the centre some fringes drop out (about half survive), so it stays calmer, not empty.
+    float keep = mix(0.55, 1.0, edge) - fract(sin(period * 78.233) * 24634.6345);
+    band *= smoothstep(-0.08, 0.08, keep);
     color = mix(color, fringe, band);
     // About half the hue wheel across the logo at once, a full turn every ~40 s.
     float hue = t * 0.025 + 0.28 * sin(w.x * 0.55 + w.y * 0.4 + t * 0.07);
@@ -71,6 +76,23 @@ float3 glass_backdrop(float2 p, float t) {
 float glass_lamp(float2 q, float2 center, float radius) {
     float d = length(q - center) / radius;
     return 1.0 - smoothstep(0.0, 1.0, d) + 0.25 * exp(-d * d * 0.8);
+}
+
+// The studio mirrored by the glass: dim room, sky above, two round lamps and a
+// strip light, all swaying slowly.
+float3 glass_env(float3 R, float t) {
+    float2 sway = float2(0.10 * sin(t * 0.33), 0.06 * cos(t * 0.27));
+    float3 env = mix(float3(0.03, 0.03, 0.04), float3(0.75, 0.80, 0.90),
+                     smoothstep(-0.4, 1.0, R.y));
+    env += 5.5 * glass_lamp(R.xy, float2(-0.38, 0.46) + sway, 0.50);
+    env += float3(3.0, 3.3, 3.7) * glass_lamp(R.xy, float2(0.60, -0.42) - sway, 0.24);
+    // Tall strip light off to the right: a broad, faint sheen that slides across the curve.
+    float2 sd = R.xy - float2(0.22 + 0.10 * sin(t * 0.19), 0.05);
+    float strip = exp(-pow(dot(sd, float2(0.94, 0.34)) / 0.14, 2.0))
+                * (1.0 - smoothstep(0.30, 0.90, abs(dot(sd, float2(-0.34, 0.94)))));
+    env += 2.0 * strip;
+    // Soft horizon: a hard step draws a band along the outline where the tilt passes 45°.
+    return env * (smoothstep(-0.6, 0.6, R.z) * 0.85 + 0.15);
 }
 
 float3 glass_shade(float2 pos, constant GlassUniforms &uniforms, texture2d<float> height_map) {
@@ -91,12 +113,16 @@ float3 glass_shade(float2 pos, constant GlassUniforms &uniforms, texture2d<float
 
     // Refraction: each colour bends by its own index (spread exaggerated so the
     // fringes show at logo size), then travels through the slab to the backdrop.
+    constexpr sampler rs(filter::linear, address::clamp_to_edge);
     float3 iors = float3(1.40, 1.48, 1.57);
+    // 0 at the centre of the face, 1 on the bevel (R = bevel ramp, G = crown; G spans ~1.3..1.8 on the face).
+    float4 hm = height_map.sample(rs, uv);
+    float edge = 1.0 - clamp(hm.r, 0.0, 1.0) * smoothstep(1.35, 1.75, hm.g);
     float3 color;
     for (int c = 0; c < 3; c++) {
         float3 r = refract(float3(0.0, 0.0, -1.0), n, 1.0 / iors[c]);
         float2 shift = float2(r.x, -r.y) / max(-r.z, 0.25) * thickness * 1.5;
-        color[c] = glass_backdrop(p + shift, t)[c];
+        color[c] = glass_backdrop(p + shift, t, edge)[c];
     }
     // Steep walls throw the view sideways into the dark room: the dark outline of real glass.
     float wall = 1.0 - smoothstep(0.25, 0.85, n.z);
@@ -104,22 +130,19 @@ float3 glass_shade(float2 pos, constant GlassUniforms &uniforms, texture2d<float
     // Thick glass looks slightly milky and cool, so the backdrop reads as behind something.
     color = mix(color, float3(0.92, 0.96, 1.0), 0.12) * float3(0.98, 0.98, 1.0);
 
-    // Surface reflection of a dim room with two softboxes that sway slowly.
-    float3 R = reflect(float3(0.0, 0.0, -1.0), n);
-    float2 sway = float2(0.10 * sin(t * 0.33), 0.06 * cos(t * 0.27));
-    float3 env = mix(float3(0.03, 0.03, 0.04), float3(0.75, 0.80, 0.90),
-                     smoothstep(-0.4, 1.0, R.y));
-    env += 12.0 * glass_lamp(R.xy, float2(-0.38, 0.46) + sway, 0.26);
-    env += float3(5.0, 5.5, 6.5) * glass_lamp(R.xy, float2(0.60, -0.42) - sway, 0.10);
-    env *= smoothstep(-0.6, 0.6, R.z) * 0.85 + 0.15;
+    // Back-surface reflection: light bounces off the inside of the far face, so the
+    // studio shows up a second time, mirrored, dimmer and tinted by the glass.
+    float3 back = glass_env(reflect(float3(0.0, 0.0, -1.0), float3(-n.xy, n.z)), t);
+    color += 0.10 * back * mix(float3(1.0), color, 0.6);
 
-    float fresnel = 0.04 + 0.96 * pow(1.0 - clamp(n.z, 0.0, 1.0), 5.0);
-    color = color * (1.0 - fresnel) + env * fresnel;
+    // Front-surface reflection; base reflectance pushed above real glass (0.04) so it reads.
+    float3 R = reflect(float3(0.0, 0.0, -1.0), n);
+    float fresnel = 0.08 + 0.92 * pow(1.0 - clamp(n.z, 0.0, 1.0), 4.0);
+    color = color * (1.0 - fresnel) + glass_env(R, t) * fresnel;
     // Thin bright line just inside the outline: light trapped in the edge by internal reflection.
     // Measured in pixels from the outline (R is distance / bevel width, bevel = 0.16 of the logo),
     // so the leaf, whose edge turns steep within a pixel, gets the same line as the body.
-    constexpr sampler rs(filter::linear, address::clamp_to_edge);
-    float edge_px = height_map.sample(rs, uv).r * 0.16 * uniforms.body_size_px.x;
+    float edge_px = hm.r * 0.16 * uniforms.body_size_px.x;
     float rim = smoothstep(0.2, 0.9, edge_px) * (1.0 - smoothstep(1.3, 2.4, edge_px));
     color += float3(0.9, 0.95, 1.0) * rim * 1.8;
     return clamp(color, 0.0, 1.0);
@@ -156,6 +179,7 @@ final class GlassLayer: CAMetalLayer, Background {
   private var heightTexture: MTLTexture?
   /// Logo rect (points) the height texture was baked for; rebaked when it changes.
   private var bakedRect = CGRect.null
+  private var isBaking = false
 
   // MARK: - Animation
   private var totalElapsedTime: CGFloat = 0
@@ -278,11 +302,23 @@ final class GlassLayer: CAMetalLayer, Background {
 
     // The paths are re-transformed after layout, so check here rather than in update(frame:).
     let rect = fruit.bounds(including: leaf).insetBy(dx: -4, dy: -4)
-    if rect != bakedRect {
-      bakedRect = rect
-      heightTexture = PuppyLayer.bakeHeightTexture(
-        device: metalDevice, rect: rect, contentsScale: contentsScale, fruit: fruit, leaf: leaf
-      )
+    if rect != bakedRect && !isBaking {
+      // Baked off the main thread so the app doesn't freeze; the logo stays black until it lands.
+      isBaking = true
+      let device = metalDevice, scale = contentsScale
+      let fruitPath = fruit.transformedPath.quartzPath, leafPath = leaf.transformedPath.quartzPath
+      DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+        let baked = PuppyLayer.bakeHeightTexture(
+          device: device, rect: rect, contentsScale: scale, fruitPath: fruitPath, leafPath: leafPath
+        )
+        DispatchQueue.main.async {
+          guard let self = self else { return }
+          self.heightTexture = baked
+          self.bakedRect = rect
+          self.isBaking = false
+          self.setNeedsDisplay()  // re-checks the rect, in case it changed meanwhile
+        }
+      }
     }
 
     let cs = contentsScale
