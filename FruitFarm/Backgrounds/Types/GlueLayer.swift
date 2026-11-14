@@ -1,4 +1,3 @@
-// swiftlint:disable file_length
 import Cocoa
 import QuartzCore
 import Foundation
@@ -28,10 +27,13 @@ struct GlueUniforms {
     float2 body_center_px;
     float2 body_half_px;
     float time;
+    int count;
 };
 
-float glue_hash(float2 p) {
-    return fract(sin(dot(p, float2(127.1, 311.7))) * 43758.5453123);
+float3 glue_cycle_color(float cycleSeed) {
+    return 0.5 + 0.5 * cos(
+        6.2831853 * (cycleSeed + float3(0.00, 0.33, 0.67))
+    );
 }
 
 float2 glue_hash2(float2 p) {
@@ -41,180 +43,84 @@ float2 glue_hash2(float2 p) {
     )) * 43758.5453);
 }
 
-float glue_noise(float2 p) {
-    float2 i = floor(p);
-    float2 f = fract(p);
-    float2 u = f * f * (3.0 - 2.0 * f);
-
-    float a = glue_hash(i);
-    float b = glue_hash(i + float2(1.0, 0.0));
-    float c = glue_hash(i + float2(0.0, 1.0));
-    float d = glue_hash(i + float2(1.0, 1.0));
-
-    return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
-}
-
-float glue_fbm(float2 p) {
-    float v = 0.0;
-    float amp = 0.5;
-
-    for (int i = 0; i < 4; i++) {
-        v += glue_noise(p) * amp;
-        p = float2(p.x * 1.7 + p.y * 0.3, p.y * 1.8 - p.x * 0.2) + 11.7;
-        amp *= 0.5;
-    }
-
-    return v;
-}
-
-float3 glue_cycle_color(float cycleSeed) {
-    return 0.5 + 0.5 * cos(
-        6.2831853 * (cycleSeed + float3(0.00, 0.33, 0.67))
+// Decorative dust, not simulated: one jittered, drifting, twinkling dot per
+// grid cell. Returns (coverage, brightness).
+float2 glue_dust(float2 p, float cellSize, float time, float unit, float salt) {
+    float2 uv = p / cellSize;
+    float2 cell = floor(uv);
+    float2 h = glue_hash2(cell + salt);
+    if (h.x < 0.35) { return float2(0.0); }
+    float2 h2 = glue_hash2(cell + salt + 7.1);
+    // Centre 0.3...0.7 + 0.08 drift + radius <= 0.22 keeps the dot inside its cell.
+    float2 centre = 0.3 + 0.4 * h2 + 0.08 * float2(
+        sin(time * 0.35 + h.y * 6.2831853),
+        cos(time * 0.27 + h2.x * 6.2831853)
     );
+    float radius = mix(0.08, 0.22, h.y);
+    float dist = length(uv - cell - centre);
+    float px = (radius - dist) * cellSize * unit;
+    float coverage = clamp(px + 0.5, 0.0, 1.0);
+    float twinkle = 0.5 + 0.5 * sin(time * (0.6 + h2.y) + h.x * 40.0);
+    float brightness = (0.25 + 0.75 * twinkle) * (0.7 + 0.3 * (1.0 - dist / radius));
+    return float2(coverage, brightness);
 }
 
-float3 glue_reactor_palette(float heat, float seed, float cycleSeed) {
-    float3 idle = float3(0.006, 0.018, 0.011);
-    float3 reactorColor = glue_cycle_color(cycleSeed);
-    float3 hotColor = mix(reactorColor, float3(1.0, 0.88, 0.18), 0.45);
-    float3 white = float3(1.00, 0.96, 0.74);
-
-    float3 color = mix(idle, reactorColor, smoothstep(0.02, 0.48, heat));
-    color = mix(color, hotColor, smoothstep(0.38, 0.78, heat));
-    color = mix(color, white, smoothstep(0.74, 1.0, heat));
-    color *= 0.86 + seed * 0.28;
-    return color;
-}
-
-float glue_ignition_delay(float2 cell, float hotspot) {
-    float seed = glue_hash(cell);
-    float neighborSeed = glue_noise(cell * 0.018);
-    return mix(0.06, 0.86, seed) - neighborSeed * 0.12 - hotspot;
-}
-
-float glue_cell_preheat(float2 cell, float igniteProgress, float fadeProgress, float hotspot) {
-    float ignitionDelay = glue_ignition_delay(cell, hotspot);
-    float preheatIn = smoothstep(ignitionDelay - 0.22, ignitionDelay + 0.02, igniteProgress);
-    float preheatOut = smoothstep(ignitionDelay - 0.22, ignitionDelay + 0.02, fadeProgress);
-    return preheatIn * (1.0 - preheatOut) * 0.32;
-}
-
-float glue_cell_heat(
-    float2 cell,
-    float igniteProgress,
-    float fadeProgress,
-    float fullSaturation,
-    float hotspot,
-    float cycle,
-    float time) {
-
-    float ignitionDelay = glue_ignition_delay(cell, hotspot);
-    float litIn = smoothstep(ignitionDelay - 0.018, ignitionDelay + 0.030, igniteProgress);
-    float litOut = smoothstep(ignitionDelay - 0.018, ignitionDelay + 0.030, fadeProgress);
-    float lit = max(litIn, fullSaturation) * (1.0 - litOut);
-    float preheat = glue_cell_preheat(cell, igniteProgress, fadeProgress, hotspot);
-    float flicker = glue_hash(cell + float2(floor(time * 18.0))) * 0.24;
-    float surge = smoothstep(0.32, 0.50, cycle) * (1.0 - smoothstep(0.58, 0.82, cycle)) * flicker;
-    return clamp(max(lit, preheat) + surge * lit, 0.0, 1.0);
-}
-
-float2 glue_neighbor_direction(float2 cell) {
-    float pick = glue_hash(cell + 37.1);
-    if (pick < 0.25) {
-        return float2(1.0, 0.0);
-    }
-    if (pick < 0.50) {
-        return float2(-1.0, 0.0);
-    }
-    if (pick < 0.75) {
-        return float2(0.0, 1.0);
-    }
-    return float2(0.0, -1.0);
-}
-
-float glue_capsule(float2 p, float2 a, float2 b, float radius) {
-    float2 ba = b - a;
-    float h = clamp(dot(p - a, ba) / max(dot(ba, ba), 0.0001), 0.0, 1.0);
-    return 1.0 - smoothstep(radius, radius + 0.54, length(p - (a + ba * h)));
-}
-
+// blobs[i] = (x, y, radius, unused) in units of the body's shorter half extent.
 fragment float4 fragment_shader_glue(
     VertexOut in [[stage_in]],
-    constant GlueUniforms &uniforms [[buffer(0)]]) {
+    constant GlueUniforms &uniforms [[buffer(0)]],
+    constant float4 *blobs [[buffer(1)]]) {
 
     float2 half_px = max(uniforms.body_half_px, float2(1.0));
-    float2 lp = (in.position.xy - uniforms.body_center_px) / half_px;
-    float loopTime = uniforms.time / 50.0;
-    float cycle = fract(loopTime);
-    float cycleSeed = glue_hash(float2(floor(loopTime), 17.3));
-    float loopFade = smoothstep(0.00, 0.08, cycle) * (1.0 - smoothstep(0.92, 1.0, cycle));
-    float2 component = lp * float2(1.0, half_px.y / max(half_px.x, 1.0));
+    float unit = min(half_px.x, half_px.y);
+    float2 p = (in.position.xy - uniforms.body_center_px) / unit;
 
-    float cellSizePx = 4.0;
-    float2 gridUv = in.position.xy / cellSizePx;
-    float2 cell = floor(gridUv);
-
-    float hotspotA = 1.0 - smoothstep(0.0, 1.15, length(component - float2(-0.42, -0.22)));
-    float hotspotB = 1.0 - smoothstep(0.0, 1.22, length(component - float2(0.48, 0.26)));
-    float hotspot = max(hotspotA, hotspotB) * 0.16;
-    float seed = glue_hash(cell);
-
-    float igniteProgress = pow(clamp(cycle / 0.44, 0.0, 1.0), 2.65);
-    float fadeProgress = pow(clamp((cycle - 0.56) / 0.44, 0.0, 1.0), 2.65);
-    float fullSaturation = 0.75 * smoothstep(0.40, 0.48, cycle) * (1.0 - smoothstep(0.56, 0.64, cycle));
-    float preheat = glue_cell_preheat(cell, igniteProgress, fadeProgress, hotspot);
-    float heat = glue_cell_heat(cell, igniteProgress, fadeProgress, fullSaturation, hotspot, cycle, uniforms.time);
-
-    float shape = 0.0;
-    float shapeHeat = 0.0;
-    for (int y = -1; y <= 1; y++) {
-        for (int x = -1; x <= 1; x++) {
-            float2 offset = float2(float(x), float(y));
-            float2 sourceCell = cell + offset;
-            float sourceHeat = glue_cell_heat(sourceCell, igniteProgress, fadeProgress, fullSaturation, hotspot, cycle, uniforms.time);
-            float2 direction = glue_neighbor_direction(sourceCell);
-            float neighborHeat = glue_cell_heat(
-                sourceCell + direction,
-                igniteProgress,
-                fadeProgress,
-                fullSaturation,
-                hotspot,
-                cycle,
-                uniforms.time
-            );
-            float merge = smoothstep(0.10, 0.72, min(sourceHeat, neighborHeat));
-            float2 sourceLocalPx = (gridUv - sourceCell) * cellSizePx;
-            float2 centerPx = float2(cellSizePx * 0.5);
-            float circleDistance = length(sourceLocalPx - centerPx);
-            float circle = 1.0 - smoothstep(1.42, 1.95, circleDistance);
-            float bridge = glue_capsule(
-                sourceLocalPx,
-                centerPx,
-                centerPx + direction * cellSizePx,
-                mix(0.16, 1.24, merge)
-            ) * merge;
-            float sourceShape = max(circle, bridge);
-            shape = max(shape, sourceShape);
-            shapeHeat = max(shapeHeat, sourceHeat * sourceShape);
-        }
+    // 1/d^2 metaballs: coincident blobs sum to exactly one blob of the merged area.
+    // The 2r..3r cutoff stops far-away tails summing into one sheet; it starts
+    // past the merged edge (1.41r), so merges stay seamless.
+    float field = 0.0;
+    float2 grad = float2(0.0);
+    for (int i = 0; i < uniforms.count; i++) {
+        float2 d = p - blobs[i].xy;
+        float r = blobs[i].z;
+        float d2 = max(dot(d, d), 1e-6);
+        if (d2 > 9.0 * r * r) { continue; }
+        float w = r * r / d2 * (1.0 - smoothstep(2.0 * r, 3.0 * r, sqrt(d2)));
+        field += w;
+        grad -= 2.0 * w / d2 * d;
     }
-    float pixelCore = shape;
-    heat = max(heat, shapeHeat);
-    float3 color = glue_reactor_palette(heat, seed, cycleSeed) * pixelCore;
 
-    float3 background = float3(0.0);
-    color += background;
+    // Treat 1/sqrt(field) as d/r of a dome: exact hemisphere for a lone blob,
+    // smoothly blended across merged ones. -grad points outward.
+    float gn = min(rsqrt(max(field, 1e-6)), 1.0);
+    float2 outward = normalize(-grad + float2(1e-7));
+    float3 normal = float3(outward * gn, sqrt(1.0 - gn * gn));
+    // Pixel y grows downward, so -y is up: light from the top-left.
+    float3 light = normalize(float3(-0.45, -0.55, 0.70));
+    float3 halfway = normalize(light + float3(0.0, 0.0, 1.0));
+    float diffuse = max(dot(normal, light), 0.0);
+    float specular = pow(max(dot(normal, halfway), 0.0), 60.0);
 
-    float bloom = heat * smoothstep(0.78, 1.0, heat) * 0.36;
-    color += glue_cycle_color(cycleSeed) * bloom * pixelCore;
-    color += float3(glue_fbm(in.position.xy * 0.45 + uniforms.time * 0.4) * 0.018);
+    // Clamp first: the field spikes at blob centres and would blow up fwidth.
+    field = min(field, 4.0);
+    // 1/sqrt(field) is d/r for a lone blob: linear in distance, so dividing by
+    // its fwidth gives pixels inside the edge without spikes from nested blobs.
+    // Capped at 2: as field -> 0 it shoots up and fwidth would fake half-inside edges.
+    float g = min(rsqrt(max(field, 1e-4)), 2.0);
+    float edgePx = (1.0 - g) / max(fwidth(g), 1e-4);
+    float inside = clamp(edgePx + 0.5, 0.0, 1.0);
+    float rim = 1.0 - smoothstep(1.5, 2.5, edgePx);
+    float3 base = glue_cycle_color(uniforms.time / 90.0);
+    float3 color = base * (0.65 + 0.35 * diffuse);
+    color = mix(color, mix(base, float3(1.0), 0.45), rim);
+    color += float3(0.85) * specular;
 
-    float vignette = smoothstep(1.55, 0.20, length(lp * float2(0.82, 0.94)));
-    color *= 0.72 + 0.28 * vignette;
-    color *= 0.75;
-    color *= loopFade;
-    color = pow(clamp(color, 0.0, 1.0), float3(0.86));
-    return float4(color, 1.0);
+    // Two dust layers at different scales, drawn only behind the blobs.
+    float2 dustA = glue_dust(p, 0.030, uniforms.time, unit, 0.0);
+    float2 dustB = glue_dust(p, 0.017, uniforms.time * 1.3, unit, 91.7);
+    float3 dustTint = mix(base, float3(1.0), 0.35);
+    float3 dust = dustTint * (dustA.x * dustA.y * 0.75 + dustB.x * dustB.y * 0.45);
+    return float4(mix(min(dust, 1.0), min(color, 1.0), inside), 1.0);
 }
 """
 
@@ -224,7 +130,142 @@ private struct MetalGlueFragmentUniforms {
   var body_center_px: SIMD2<Float>
   var body_half_px: SIMD2<Float>
   var time: Float
+  var count: Int32
   // swiftlint:enable identifier_name
+}
+
+/// Blobs drift together and merge; new small ones spawn into the gaps;
+/// any that grow past `ejectRadius` get pushed out of the body.
+/// Units: the body's shorter half extent is 1, origin at the body centre.
+private struct GlueSimulation {
+  struct Blob {
+    var pos: SIMD2<Float>
+    var vel = SIMD2<Float>.zero
+    var radius: Float
+    var growth: Float
+    var ejecting = false
+  }
+
+  static let maxBlobs = 900
+  static let spawnRadii: ClosedRange<Float> = 0.007...0.018
+  static let spawnClearance: Float = 0.028
+  static let spawnInterval: Float = 0.008
+  static let ejectRadius: Float = 0.22
+  static let reach: Float = 0.10
+  static let pull: Float = 0.05
+  static let wander: Float = 0.02
+  static let damping: Float = 1.5
+  static let ejectPush: Float = 0.35
+
+  var blobs: [Blob] = []
+  /// Body half extents in simulation units (shorter side is 1).
+  var extent = SIMD2<Float>(1, 1)
+  private var spawnTimer: Float = 0
+
+  /// Radius as drawn: new blobs swell in instead of popping.
+  static func drawnRadius(_ blob: Blob) -> Float {
+    let g = blob.growth
+    return blob.radius * g * g * (3 - 2 * g)
+  }
+
+  mutating func step(_ dt: Float) {
+    guard dt > 0 else { return }
+    if blobs.isEmpty {
+      for _ in 0..<1200 { spawn(grown: true) }
+    }
+    spawnTimer += dt
+    while spawnTimer >= Self.spawnInterval {
+      spawnTimer -= Self.spawnInterval
+      spawn(grown: false)
+    }
+    integrate(dt, accelerations())
+    mergeAndEject()
+  }
+
+  private func accelerations() -> [SIMD2<Float>] {
+    var acc = [SIMD2<Float>](repeating: .zero, count: blobs.count)
+    for i in blobs.indices {
+      for j in (i + 1)..<blobs.count {
+        let a = blobs[i], b = blobs[j]
+        let delta = b.pos - a.pos
+        let dist = max(simd_length(delta), 1e-4)
+        let dir = delta / dist
+        let gap = dist - a.radius - b.radius
+        if a.ejecting != b.ejecting {
+          // The leaving blob shoves the others aside instead of absorbing them.
+          if gap < 0 {
+            let push = dir * (-gap) * 3
+            if a.ejecting { acc[j] += push } else { acc[i] -= push }
+          }
+          continue
+        }
+        guard !a.ejecting, gap < Self.reach else { continue }
+        let strength = Self.pull * (gap < 0 ? 3 : 1 - gap / Self.reach)
+        let ma = a.radius * a.radius, mb = b.radius * b.radius
+        acc[i] += dir * strength * mb / (ma + mb)
+        acc[j] -= dir * strength * ma / (ma + mb)
+      }
+    }
+    return acc
+  }
+
+  private mutating func integrate(_ dt: Float, _ acc: [SIMD2<Float>]) {
+    let decay = exp(-Self.damping * dt)
+    for i in blobs.indices {
+      var b = blobs[i]
+      var a = acc[i] + SIMD2(Float.random(in: -1...1), Float.random(in: -1...1)) * Self.wander
+      if b.ejecting {
+        let len = simd_length(b.pos)
+        a += (len > 1e-3 ? b.pos / len : SIMD2(1, 0)) * Self.ejectPush
+      } else {
+        // Soft walls keep resident blobs inside the body.
+        let over = abs(b.pos) + b.radius - extent
+        a -= simd_sign(b.pos) * simd_max(over, .zero) * 2
+      }
+      b.vel = (b.vel + a * dt) * decay
+      b.pos += b.vel * dt
+      b.growth = min(1, b.growth + dt / 1.5)
+      blobs[i] = b
+    }
+  }
+
+  private mutating func mergeAndEject() {
+    var i = 0
+    while i < blobs.count {
+      var j = i + 1
+      while j < blobs.count {
+        let a = blobs[i], b = blobs[j]
+        let close = simd_length(a.pos - b.pos) < 0.25 * max(a.radius, b.radius)
+        guard close, !a.ejecting, !b.ejecting else { j += 1; continue }
+        // Merge by drawn area so a half-grown newcomer doesn't pop.
+        let ra = Self.drawnRadius(a), rb = Self.drawnRadius(b)
+        let ma = ra * ra, mb = rb * rb, m = max(ma + mb, 1e-8)
+        blobs[i].pos = (a.pos * ma + b.pos * mb) / m
+        blobs[i].vel = (a.vel * ma + b.vel * mb) / m
+        blobs[i].radius = sqrt(ma + mb)
+        blobs[i].growth = 1
+        blobs.remove(at: j)
+      }
+      if blobs[i].radius > Self.ejectRadius { blobs[i].ejecting = true }
+      i += 1
+    }
+    let limit = extent + 0.05
+    blobs.removeAll { blob in
+      blob.ejecting && (abs(blob.pos.x) - blob.radius > limit.x || abs(blob.pos.y) - blob.radius > limit.y)
+    }
+  }
+
+  private mutating func spawn(grown: Bool) {
+    guard blobs.count < Self.maxBlobs else { return }
+    let span = extent - Self.spawnRadii.upperBound
+    for _ in 0..<12 {
+      let p = SIMD2(Float.random(in: -span.x...span.x), Float.random(in: -span.y...span.y))
+      if blobs.allSatisfy({ simd_length($0.pos - p) - $0.radius > Self.spawnClearance }) {
+        blobs.append(Blob(pos: p, radius: Float.random(in: Self.spawnRadii), growth: grown ? 1 : 0))
+        return
+      }
+    }
+  }
 }
 
 // swiftlint:disable:next type_body_length
@@ -240,6 +281,7 @@ final class GlueLayer: CAMetalLayer, Background {
   private var totalElapsedTime: CGFloat = 0
   private var lastUpdateTime: CGFloat = 0
   private let minUpdateInterval: CGFloat = 1.0 / 30.0
+  private var simulation = GlueSimulation()
 
   deinit {
     vertexBuffer = nil
@@ -273,6 +315,7 @@ final class GlueLayer: CAMetalLayer, Background {
     guard let other = layer as? GlueLayer else { return }
 
     self.totalElapsedTime = other.totalElapsedTime
+    self.simulation = other.simulation
   }
 
   private func setupMetal() {
@@ -336,6 +379,8 @@ final class GlueLayer: CAMetalLayer, Background {
   func update(deltaTime: CGFloat) {
     totalElapsedTime += deltaTime
     lastUpdateTime += deltaTime
+    // Cap the step so a stall (sleep, preview pause) doesn't fling blobs.
+    simulation.step(Float(min(deltaTime, 0.1)))
 
     if lastUpdateTime >= minUpdateInterval {
       lastUpdateTime = 0
@@ -371,11 +416,22 @@ final class GlueLayer: CAMetalLayer, Background {
       )
     }
 
+    let halfMin = max(min(bodyHalfPx.x, bodyHalfPx.y), 1)
+    simulation.extent = bodyHalfPx / halfMin
+    // Never empty: setFragmentBytes rejects a zero length.
+    var blobData = [SIMD4<Float>(0, 0, 0, 0)]
+    if !simulation.blobs.isEmpty {
+      blobData = simulation.blobs.map {
+        SIMD4<Float>($0.pos.x, $0.pos.y, GlueSimulation.drawnRadius($0), 0)
+      }
+    }
+
     var uniforms = MetalGlueFragmentUniforms(
       resolution: SIMD2<Float>(Float(texture.width), Float(texture.height)),
       body_center_px: bodyCenterPx,
       body_half_px: bodyHalfPx,
-      time: Float(totalElapsedTime)
+      time: Float(totalElapsedTime),
+      count: Int32(simulation.blobs.count)
     )
 
     let renderPassDescriptor = MTLRenderPassDescriptor()
@@ -412,6 +468,13 @@ final class GlueLayer: CAMetalLayer, Background {
       length: MemoryLayout<MetalGlueFragmentUniforms>.stride,
       index: 0
     )
+    // A buffer, not setFragmentBytes: maxBlobs * 16 B is over its 4 KB limit.
+    let blobBuffer = metalDevice?.makeBuffer(
+      bytes: blobData,
+      length: MemoryLayout<SIMD4<Float>>.stride * blobData.count,
+      options: .storageModeShared
+    )
+    renderEncoder.setFragmentBuffer(blobBuffer, offset: 0, index: 1)
     renderEncoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6)
 
     renderEncoder.endEncoding()
@@ -419,4 +482,3 @@ final class GlueLayer: CAMetalLayer, Background {
     commandBuffer.commit()
   }
 }
-// swiftlint:enable file_length
