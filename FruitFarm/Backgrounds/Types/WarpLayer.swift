@@ -219,9 +219,9 @@ private struct MetalWarpFragmentUniforms {
 
 private struct MetalWarpLayerData {
   var scale: Float
-  var inv_scale: Float
+  var invScale: Float
   var fade: Float
-  var inv_ds2: Float
+  var invDs2: Float
   var fi64: Float
   var fi27: Float
 }
@@ -237,9 +237,9 @@ final class WarpLayer: CAMetalLayer, Background {
   private var layerData = Array(
     repeating: MetalWarpLayerData(
       scale: 1.0,
-      inv_scale: 1.0,
+      invScale: 1.0,
       fade: 0.0,
-      inv_ds2: 0.0,
+      invDs2: 0.0,
       fi64: 0.0,
       fi27: 0.0
     ),
@@ -371,24 +371,24 @@ final class WarpLayer: CAMetalLayer, Background {
     setNeedsDisplay()
   }
 
-  private func easeWarpEngage(_ t: CGFloat) -> CGFloat {
-    let s: CGFloat = 3.0
-    let t2 = t * 2.0
-    if t2 < 1.0 {
-      return 0.5 * (t2 * t2 * ((s + 1.0) * t2 - s))
+  private func easeWarpEngage(_ progress: CGFloat) -> CGFloat {
+    let overshoot: CGFloat = 3.0
+    let doubled = progress * 2.0
+    if doubled < 1.0 {
+      return 0.5 * (doubled * doubled * ((overshoot + 1.0) * doubled - overshoot))
     }
-    let p = t2 - 2.0
-    return 0.5 * (p * p * ((s + 1.0) * p + s) + 2.0)
+    let shifted = doubled - 2.0
+    return 0.5 * (shifted * shifted * ((overshoot + 1.0) * shifted + overshoot) + 2.0)
   }
 
-  private func easeWarpDisengage(_ t: CGFloat) -> CGFloat {
-    let s: CGFloat = 1.5
-    let t2 = t * 2.0
-    if t2 < 1.0 {
-      return 0.5 * (t2 * t2 * ((s + 1.0) * t2 - s))
+  private func easeWarpDisengage(_ progress: CGFloat) -> CGFloat {
+    let overshoot: CGFloat = 1.5
+    let doubled = progress * 2.0
+    if doubled < 1.0 {
+      return 0.5 * (doubled * doubled * ((overshoot + 1.0) * doubled - overshoot))
     }
-    let p = t2 - 2.0
-    return 0.5 * (p * p * ((s + 1.0) * p + s) + 2.0)
+    let shifted = doubled - 2.0
+    return 0.5 * (shifted * shifted * ((overshoot + 1.0) * shifted + overshoot) + 2.0)
   }
 
   func update(deltaTime: CGFloat) {
@@ -419,23 +419,90 @@ final class WarpLayer: CAMetalLayer, Background {
     }
   }
 
-  private static func glslSmoothstep(_ edge0: Float, _ edge1: Float, _ x: Float) -> Float {
-    let t = min(max((x - edge0) / (edge1 - edge0), 0), 1)
-    return t * t * (3 - 2 * t)
+  private static func glslSmoothstep(_ edge0: Float, _ edge1: Float, _ value: Float) -> Float {
+    let normalized = min(max((value - edge0) / (edge1 - edge0), 0), 1)
+    return normalized * normalized * (3 - 2 * normalized)
   }
 
-  private static func glslFract(_ x: Float) -> Float {
-    return x - floor(x)
+  private static func glslFract(_ value: Float) -> Float {
+    return value - floor(value)
   }
 
-  private static func warpHash(_ p: SIMD2<Float>) -> Float {
-    let px = p.x, py = p.y
-    var p3x = glslFract(px * 0.1031)
-    var p3y = glslFract(py * 0.1030)
-    var p3z = glslFract(px * 0.0973)
-    let d = p3x * (p3y + 33.33) + p3y * (p3z + 33.33) + p3z * (p3x + 33.33)
-    p3x += d; p3y += d; p3z += d
+  private static func warpHash(_ point: SIMD2<Float>) -> Float {
+    let pointX = point.x, pointY = point.y
+    var p3x = glslFract(pointX * 0.1031)
+    var p3y = glslFract(pointY * 0.1030)
+    var p3z = glslFract(pointX * 0.0973)
+    let dotTerm = p3x * (p3y + 33.33) + p3y * (p3z + 33.33) + p3z * (p3x + 33.33)
+    p3x += dotTerm; p3y += dotTerm; p3z += dotTerm
     return glslFract((p3x + p3y) * p3z)
+  }
+
+  private static func makeFragmentUniforms(time: Float, speed: Float, resolution: SIMD2<Float>,
+                                           referenceSize: Float) -> MetalWarpFragmentUniforms {
+    let smooth = Self.glslSmoothstep
+    let fruitScale = min(min(resolution.x, resolution.y) / referenceSize, 2.0)
+    let vib = smooth(0.3, 1.5, speed) * (1.0 - smooth(8.0, 12.0, speed))
+    let aberration = 1.0 / (1.0 + speed * 0.04)
+    let scroll = 0.02 + (0.5 - 0.02) * smooth(0.1, 10.0, speed)
+    return MetalWarpFragmentUniforms(
+      resolution: resolution,
+      uvOffset: SIMD2<Float>(
+        fruitScale * 0.005 + sin(time * 130.0) * vib * 0.001,
+        -fruitScale * 0.04 + cos(time * 110.0) * vib * 0.001
+      ),
+      time: time,
+      speed: speed,
+      referenceSize: referenceSize,
+      warpFactor: 1.0 + (aberration - 1.0) * smooth(2.0, 8.0, speed),
+      streakMix: smooth(0.3, 1.5, speed),
+      brightScaled: (4.0 + (1.3 - 4.0) * smooth(0.5, 2.0, speed)) * 0.225,
+      tScroll: time * scroll,
+      cull: 0.12 + (0.28 - 0.12) * smooth(0.3, 2.0, speed),
+      dopplerMix: smooth(3.0, 8.0, speed),
+      beamingMix: smooth(2.0, 8.0, speed),
+      twinkleSolid: smooth(0.3, 1.0, speed),
+      glow: smooth(7.0, 12.0, speed) * 0.5,
+      vigRadius: 2.0 + (1.2 - 2.0) * smooth(3.0, 10.0, speed)
+    )
+  }
+
+  private func updateLayerData(tScroll: Float) {
+    let smooth = Self.glslSmoothstep
+    for index in 0..<warpLayerCount {
+      let floatIndex = Float(index)
+      let depth = Self.glslFract(
+        floatIndex / Float(warpLayerCount) + tScroll + Self.warpHash(SIMD2<Float>(floatIndex, floatIndex * 0.7)) * 0.05
+      )
+      let scale = 18.0 + (0.8 - 18.0) * depth
+      let fade = smooth(0.0, 0.1, depth) * smooth(1.0, 0.8, depth)
+      let falloffSize: Float = 0.0018 + 0.0006 * depth
+      layerData[index] = MetalWarpLayerData(
+        scale: scale,
+        invScale: 1.0 / scale,
+        fade: fade,
+        invDs2: 1.0 / (falloffSize * falloffSize),
+        fi64: floatIndex * 64.0,
+        fi27: floatIndex * 27.0
+      )
+    }
+  }
+
+  private func applyScissorRect(on encoder: MTLRenderCommandEncoder, resolution: SIMD2<Float>) {
+    guard let fruit = currentFruit, let leaf = currentLeaf else { return }
+    let body = fruit.bounds(including: leaf)
+    let paddedBody = CGRect(x: body.minX - 4, y: body.minY - 4,
+                            width: body.width + 8, height: body.height + 8)
+    let scaleX = CGFloat(resolution.x) / max(bounds.width, 1)
+    let scaleY = CGFloat(resolution.y) / max(bounds.height, 1)
+    let scissorX = max(0, Int(paddedBody.minX * scaleX))
+    let scissorY = max(0, Int((bounds.height - paddedBody.maxY) * scaleY))
+    let scissorWidth = max(0, min(Int(ceil(paddedBody.width * scaleX)), Int(resolution.x) - scissorX))
+    let scissorHeight = max(0, min(Int(ceil(paddedBody.height * scaleY)), Int(resolution.y) - scissorY))
+    if scissorWidth > 0 && scissorHeight > 0 {
+      encoder.setScissorRect(MTLScissorRect(x: scissorX, y: scissorY,
+                                            width: scissorWidth, height: scissorHeight))
+    }
   }
 
   // MARK: - Drawing
@@ -446,56 +513,15 @@ final class WarpLayer: CAMetalLayer, Background {
           let drawable = nextDrawable() else { return }
     let texture = drawable.texture
 
-    let spd = Float(currentSpeed)
-    let time = Float(totalElapsedTime)
+    let resolution = SIMD2<Float>(Float(texture.width), Float(texture.height))
     let referenceSize: Float = 300.0 * Float(contentsScale * warpRenderScale)
-    let resW = Float(texture.width)
-    let resH = Float(texture.height)
-
-    let ss = Self.glslSmoothstep
-    let fruitScale = min(min(resW, resH) / referenceSize, 2.0)
-    let vib = ss(0.3, 1.5, spd) * (1.0 - ss(8.0, 12.0, spd))
-    let aberration = 1.0 / (1.0 + spd * 0.04)
-    let scroll = 0.02 + (0.5 - 0.02) * ss(0.1, 10.0, spd)
-
-    var uniforms = MetalWarpFragmentUniforms(
-      resolution: SIMD2<Float>(resW, resH),
-      uvOffset: SIMD2<Float>(
-        fruitScale * 0.005 + sin(time * 130.0) * vib * 0.001,
-        -fruitScale * 0.04 + cos(time * 110.0) * vib * 0.001
-      ),
-      time: time,
-      speed: spd,
-      referenceSize: referenceSize,
-      warpFactor: 1.0 + (aberration - 1.0) * ss(2.0, 8.0, spd),
-      streakMix: ss(0.3, 1.5, spd),
-      brightScaled: (4.0 + (1.3 - 4.0) * ss(0.5, 2.0, spd)) * 0.225,
-      tScroll: time * scroll,
-      cull: 0.12 + (0.28 - 0.12) * ss(0.3, 2.0, spd),
-      dopplerMix: ss(3.0, 8.0, spd),
-      beamingMix: ss(2.0, 8.0, spd),
-      twinkleSolid: ss(0.3, 1.0, spd),
-      glow: ss(7.0, 12.0, spd) * 0.5,
-      vigRadius: 2.0 + (1.2 - 2.0) * ss(3.0, 10.0, spd)
+    var uniforms = Self.makeFragmentUniforms(
+      time: Float(totalElapsedTime),
+      speed: Float(currentSpeed),
+      resolution: resolution,
+      referenceSize: referenceSize
     )
-
-    for i in 0..<warpLayerCount {
-      let fi = Float(i)
-      let z = Self.glslFract(
-        fi / Float(warpLayerCount) + uniforms.tScroll + Self.warpHash(SIMD2<Float>(fi, fi * 0.7)) * 0.05
-      )
-      let scale = 18.0 + (0.8 - 18.0) * z
-      let fade = ss(0.0, 0.1, z) * ss(1.0, 0.8, z)
-      let ds: Float = 0.0018 + 0.0006 * z
-      layerData[i] = MetalWarpLayerData(
-        scale: scale,
-        inv_scale: 1.0 / scale,
-        fade: fade,
-        inv_ds2: 1.0 / (ds * ds),
-        fi64: fi * 64.0,
-        fi27: fi * 27.0
-      )
-    }
+    updateLayerData(tScroll: uniforms.tScroll)
 
     let renderPassDescriptor = MTLRenderPassDescriptor()
     renderPassDescriptor.colorAttachments[0].texture = texture
@@ -512,20 +538,7 @@ final class WarpLayer: CAMetalLayer, Background {
     }
 
     renderEncoder.setRenderPipelineState(pipelineState)
-    if let fruit = currentFruit, let leaf = currentLeaf {
-      let body = fruit.bounds(including: leaf)
-      let fb = CGRect(x: body.minX - 4, y: body.minY - 4,
-                       width: body.width + 8, height: body.height + 8)
-      let scaleX = CGFloat(resW) / max(bounds.width, 1)
-      let scaleY = CGFloat(resH) / max(bounds.height, 1)
-      let sx = max(0, Int(fb.minX * scaleX))
-      let sy = max(0, Int((bounds.height - fb.maxY) * scaleY))
-      let sw = max(0, min(Int(ceil(fb.width * scaleX)), Int(resW) - sx))
-      let sh = max(0, min(Int(ceil(fb.height * scaleY)), Int(resH) - sy))
-      if sw > 0 && sh > 0 {
-        renderEncoder.setScissorRect(MTLScissorRect(x: sx, y: sy, width: sw, height: sh))
-      }
-    }
+    applyScissorRect(on: renderEncoder, resolution: resolution)
     renderEncoder.setVertexBuffer(vertexBuffer, offset: 0, index: 0)
     renderEncoder.setFragmentBytes(
       &uniforms,

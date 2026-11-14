@@ -199,7 +199,6 @@ private struct MetalMetallicFragmentUniforms {
   var blobs: (SIMD2<Float>, SIMD2<Float>, SIMD2<Float>, SIMD2<Float>, SIMD2<Float>, SIMD2<Float>, SIMD2<Float>)
 }
 
-// swiftlint:disable:next type_body_length
 final class MetallicLayer: CAMetalLayer, Background {
 
   // MARK: - Metal Objects
@@ -341,7 +340,7 @@ final class MetallicLayer: CAMetalLayer, Background {
     let device = metalDevice, scale = contentsScale
     let fruitPath = fruit.transformedPath.quartzPath, leafPath = leaf.transformedPath.quartzPath
     DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-      let baked = PuppyLayer.bakeHeightTexture(
+      let baked = HeightMapBaker.bake(
         device: device, rect: rect, contentsScale: scale, fruitPath: fruitPath, leafPath: leafPath
       ).flatMap { MetallicLayer.bakeSlabTexture(from: $0) }
       DispatchQueue.main.async {
@@ -368,10 +367,10 @@ final class MetallicLayer: CAMetalLayer, Background {
     var slab = [Float](repeating: 0, count: width * height * 2)
     for index in 0..<(width * height) {
       // R = bevel ramp, G = crown, B = leafness
-      let k = 1 - min(max(rgba[index * 4], 0), 1)
+      let inverseRamp = 1 - min(max(rgba[index * 4], 0), 1)
       let leafness = rgba[index * 4 + 2]
-      slab[index * 2] = 0.55 * (1 - k * k * (k + (1 - k) * leafness)).squareRoot() + 0.45 * rgba[index * 4 + 1]
-      slab[index * 2 + 1] = 1 - k
+      slab[index * 2] = 0.55 * (1 - inverseRamp * inverseRamp * (inverseRamp + (1 - inverseRamp) * leafness)).squareRoot() + 0.45 * rgba[index * 4 + 1]
+      slab[index * 2 + 1] = 1 - inverseRamp
     }
     let descriptor = MTLTextureDescriptor.texture2DDescriptor(
       pixelFormat: .rg32Float, width: width, height: height, mipmapped: false
@@ -403,36 +402,18 @@ final class MetallicLayer: CAMetalLayer, Background {
           let drawable = nextDrawable() else { return }
     let texture = drawable.texture
 
-    let cs = contentsScale
-    var bodyCenterPx = SIMD2<Float>(
-      Float(texture.width) * 0.5,
-      Float(texture.height) * 0.5
-    )
-    var bodyHalfPx = SIMD2<Float>(
-      Float(texture.width) * 0.25,
-      Float(texture.height) * 0.25
-    )
-    if let fruit = currentFruit, let leaf = currentLeaf {
-      let body = fruit.bounds(including: leaf)
-      let centerX = body.midX * cs
-      let centerY = (bounds.height - body.midY) * cs
-      bodyCenterPx = SIMD2<Float>(Float(centerX), Float(centerY))
-      bodyHalfPx = SIMD2<Float>(
-        Float((body.width * 0.5) * cs),
-        Float((body.height * 0.5) * cs)
-      )
-    }
-
+    let (bodyCenterPx, bodyHalfPx) = bodyPixelMetrics(texture: texture)
+    let pixelScale = contentsScale
     let lpPerPx = 1 / (pointwiseMax(bodyHalfPx, SIMD2<Float>(repeating: 1)) * Float(max(metallicZoomFactor, 0.001)))
-    let logoOrigin = SIMD2<Float>(Float(bakedRect.minX * cs), Float((bounds.height - bakedRect.maxY) * cs))
-    let logoSize = SIMD2<Float>(Float(bakedRect.width * cs), Float(bakedRect.height * cs))
-    let a = Float((totalElapsedTime / 30).truncatingRemainder(dividingBy: 1) * 2 * .pi)
-    // Each blob orbits its home along (cos(a + 2.1i), sin(2a + 1.3i))
-    let blob = { (i: Int) -> SIMD2<Float> in
-      Self.blobHomes[i] + 0.10 * SIMD2<Float>(cos(a + 2.1 * Float(i)), sin(2 * a + 1.3 * Float(i)))
+    let logoOrigin = SIMD2<Float>(Float(bakedRect.minX * pixelScale), Float((bounds.height - bakedRect.maxY) * pixelScale))
+    let logoSize = SIMD2<Float>(Float(bakedRect.width * pixelScale), Float(bakedRect.height * pixelScale))
+    let phase = Float((totalElapsedTime / 30).truncatingRemainder(dividingBy: 1) * 2 * .pi)
+    // Each blob orbits its home along (cos(phase + 2.1i), sin(2 * phase + 1.3i))
+    let blob = { (index: Int) -> SIMD2<Float> in
+      Self.blobHomes[index] + 0.10 * SIMD2<Float>(cos(phase + 2.1 * Float(index)), sin(2 * phase + 1.3 * Float(index)))
     }
     var uniforms = MetalMetallicFragmentUniforms(
-      anim: SIMD4<Float>(a, sin(a), cos(a), Float((totalElapsedTime * 37).truncatingRemainder(dividingBy: 1))),
+      anim: SIMD4<Float>(phase, sin(phase), cos(phase), Float((totalElapsedTime * 37).truncatingRemainder(dividingBy: 1))),
       lpScale: lpPerPx,
       lpOffset: -bodyCenterPx * lpPerPx,
       uvScale: 1 / logoSize,
@@ -456,19 +437,7 @@ final class MetallicLayer: CAMetalLayer, Background {
     }
 
     renderEncoder.setRenderPipelineState(pipelineState)
-    if let fruit = currentFruit, let leaf = currentLeaf {
-      let body = fruit.bounds(including: leaf)
-      let fb = CGRect(x: body.minX - 4, y: body.minY - 4,
-                       width: body.width + 8, height: body.height + 8)
-      let cs = contentsScale
-      let sx = max(0, Int(fb.minX * cs))
-      let sy = max(0, Int((bounds.height - fb.maxY) * cs))
-      let sw = min(Int(fb.width * cs), texture.width - sx)
-      let sh = min(Int(fb.height * cs), texture.height - sy)
-      if sw > 0 && sh > 0 {
-        renderEncoder.setScissorRect(MTLScissorRect(x: sx, y: sy, width: sw, height: sh))
-      }
-    }
+    applyScissorRect(on: renderEncoder, texture: texture)
     renderEncoder.setVertexBuffer(vertexBuffer, offset: 0, index: 0)
     renderEncoder.setFragmentBytes(
       &uniforms,
@@ -481,6 +450,36 @@ final class MetallicLayer: CAMetalLayer, Background {
     renderEncoder.endEncoding()
     commandBuffer.present(drawable)
     commandBuffer.commit()
+  }
+
+  /// Body centre and half extents in texture pixels; the whole texture until a fruit is set.
+  private func bodyPixelMetrics(texture: MTLTexture) -> (SIMD2<Float>, SIMD2<Float>) {
+    guard let fruit = currentFruit, let leaf = currentLeaf else {
+      return (SIMD2<Float>(Float(texture.width) * 0.5, Float(texture.height) * 0.5),
+              SIMD2<Float>(Float(texture.width) * 0.25, Float(texture.height) * 0.25))
+    }
+    let body = fruit.bounds(including: leaf)
+    let pixelScale = contentsScale
+    let centerX = body.midX * pixelScale
+    let centerY = (bounds.height - body.midY) * pixelScale
+    return (SIMD2<Float>(Float(centerX), Float(centerY)),
+            SIMD2<Float>(Float((body.width * 0.5) * pixelScale), Float((body.height * 0.5) * pixelScale)))
+  }
+
+  private func applyScissorRect(on encoder: MTLRenderCommandEncoder, texture: MTLTexture) {
+    guard let fruit = currentFruit, let leaf = currentLeaf else { return }
+    let body = fruit.bounds(including: leaf)
+    let paddedBody = CGRect(x: body.minX - 4, y: body.minY - 4,
+                            width: body.width + 8, height: body.height + 8)
+    let pixelScale = contentsScale
+    let scissorX = max(0, Int(paddedBody.minX * pixelScale))
+    let scissorY = max(0, Int((bounds.height - paddedBody.maxY) * pixelScale))
+    let scissorWidth = min(Int(paddedBody.width * pixelScale), texture.width - scissorX)
+    let scissorHeight = min(Int(paddedBody.height * pixelScale), texture.height - scissorY)
+    if scissorWidth > 0 && scissorHeight > 0 {
+      encoder.setScissorRect(MTLScissorRect(x: scissorX, y: scissorY,
+                                            width: scissorWidth, height: scissorHeight))
+    }
   }
 }
 // swiftlint:enable file_length

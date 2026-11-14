@@ -329,15 +329,15 @@ final class MetalLinearGradientLayer: CAMetalLayer, Background {
     configureRenderEncoder(renderEncoder, uniforms: &uniforms)
     if let fruit = currentFruit, let leaf = currentLeaf {
       let body = fruit.bounds(including: leaf)
-      let fb = CGRect(x: body.minX - 4, y: body.minY - 4,
-                       width: body.width + 8, height: body.height + 8)
-      let cs = contentsScale
-      let sx = max(0, Int(fb.minX * cs))
-      let sy = max(0, Int((bounds.height - fb.maxY) * cs))
-      let sw = min(Int(fb.width * cs), texture.width - sx)
-      let sh = min(Int(fb.height * cs), texture.height - sy)
-      if sw > 0 && sh > 0 {
-        renderEncoder.setScissorRect(MTLScissorRect(x: sx, y: sy, width: sw, height: sh))
+      let paddedBody = CGRect(x: body.minX - 4, y: body.minY - 4,
+                              width: body.width + 8, height: body.height + 8)
+      let pixelScale = contentsScale
+      let scissorX = max(0, Int(paddedBody.minX * pixelScale))
+      let scissorY = max(0, Int((bounds.height - paddedBody.maxY) * pixelScale))
+      let scissorWidth = min(Int(paddedBody.width * pixelScale), texture.width - scissorX)
+      let scissorHeight = min(Int(paddedBody.height * pixelScale), texture.height - scissorY)
+      if scissorWidth > 0 && scissorHeight > 0 {
+        renderEncoder.setScissorRect(MTLScissorRect(x: scissorX, y: scissorY, width: scissorWidth, height: scissorHeight))
       }
     }
     renderEncoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6)

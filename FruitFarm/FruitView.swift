@@ -197,36 +197,28 @@ public final class FruitView: NSView {
     }
     #endif
 
-    switch fruitType {
-    case .rainbow:
-      return RainbowsLayer(frame: self.frame, fruit: fruit, leaf: leaf, contentsScale: scale)
-    case .solid:
-      return MetalSolidLayer(frame: self.frame, fruit: fruit, leaf: leaf, contentsScale: scale)
-    case .linearGradient:
-      return MetalLinearGradientLayer(frame: self.frame, fruit: fruit, leaf: leaf, contentsScale: scale)
-    case .circularGradient:
-      return MetalCircularGradientLayer(frame: self.frame, fruit: fruit, leaf: leaf, contentsScale: scale)
-    case .psychedelic:
-      return PsyLayer(frame: self.frame, fruit: fruit, leaf: leaf, contentsScale: scale)
-    case .california:
-      return CaliforniaLayer(frame: self.frame, fruit: fruit, leaf: leaf, contentsScale: scale)
-    case .liquid:
-      return LiquidLayer(frame: self.frame, fruit: fruit, leaf: leaf, contentsScale: scale)
-    case .puppy:
-      return PuppyLayer(frame: self.frame, fruit: fruit, leaf: leaf, contentsScale: scale)
-    case .warp:
-      return WarpLayer(frame: self.frame, fruit: fruit, leaf: leaf, contentsScale: scale)
-    case .ocean:
-      return OceanLayer(frame: self.frame, fruit: fruit, leaf: leaf, contentsScale: scale)
-    case .glass:
-      return GlassLayer(frame: self.frame, fruit: fruit, leaf: leaf, contentsScale: scale)
-    case .metallic:
-      return MetallicLayer(frame: self.frame, fruit: fruit, leaf: leaf, contentsScale: scale)
-    case .pogo:
-      return POGOLayer(frame: self.frame, fruit: fruit, leaf: leaf, contentsScale: scale)
-    case .glue:
-      return GlueLayer(frame: self.frame, fruit: fruit, leaf: leaf, contentsScale: scale)
+    let frame = self.frame, fruit = self.fruit, leaf = self.leaf
+    let makers: [FruitType: (CGFloat) -> (CALayer & Background)] = [
+      .rainbow: { RainbowsLayer(frame: frame, fruit: fruit, leaf: leaf, contentsScale: $0) },
+      .solid: { MetalSolidLayer(frame: frame, fruit: fruit, leaf: leaf, contentsScale: $0) },
+      .linearGradient: { MetalLinearGradientLayer(frame: frame, fruit: fruit, leaf: leaf, contentsScale: $0) },
+      .circularGradient: { MetalCircularGradientLayer(frame: frame, fruit: fruit, leaf: leaf, contentsScale: $0) },
+      .psychedelic: { PsyLayer(frame: frame, fruit: fruit, leaf: leaf, contentsScale: $0) },
+      .california: { CaliforniaLayer(frame: frame, fruit: fruit, leaf: leaf, contentsScale: $0) },
+      .liquid: { LiquidLayer(frame: frame, fruit: fruit, leaf: leaf, contentsScale: $0) },
+      .puppy: { PuppyLayer(frame: frame, fruit: fruit, leaf: leaf, contentsScale: $0) },
+      .warp: { WarpLayer(frame: frame, fruit: fruit, leaf: leaf, contentsScale: $0) },
+      .ocean: { OceanLayer(frame: frame, fruit: fruit, leaf: leaf, contentsScale: $0) },
+      .glass: { GlassLayer(frame: frame, fruit: fruit, leaf: leaf, contentsScale: $0) },
+      .metallic: { MetallicLayer(frame: frame, fruit: fruit, leaf: leaf, contentsScale: $0) },
+      .pogo: { POGOLayer(frame: frame, fruit: fruit, leaf: leaf, contentsScale: $0) },
+      .glue: { GlueLayer(frame: frame, fruit: fruit, leaf: leaf, contentsScale: $0) }
+    ]
+    guard let makeLayer = makers[fruitType] else {
+      assertionFailure("No background layer for \(fruitType)")
+      return nil
     }
+    return makeLayer(scale)
   }
 
   private func displayContentsScale() -> CGFloat {

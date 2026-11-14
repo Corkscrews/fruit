@@ -268,7 +268,7 @@ final class PreferencesControlsView: NSView {
   /// Includes options for all available background types plus a random option.
   private lazy var optionsComboBox: NSComboBox = {
     let comboBox = NSComboBox()
-    let items = buildMenuItems()
+    let items = FruitMenuTitles.menuItems()
     comboBox.addItems(withObjectValues: items)
 
     let index: Int
@@ -372,7 +372,7 @@ final class PreferencesControlsView: NSView {
   /// Takes into account the font size and adds padding for the dropdown arrow.
   /// - Returns: The estimated width needed for the combo box, capped at 140 points.
   private func estimateComboBoxWidth() -> CGFloat {
-    let menuItems = buildMenuItems()
+    let menuItems = FruitMenuTitles.menuItems()
     let font = optionsComboBox.font ?? NSFont.systemFont(ofSize: NSFont.systemFontSize)
     var maxWidth: CGFloat = 0
     for item in menuItems {
@@ -382,45 +382,5 @@ final class PreferencesControlsView: NSView {
       }
     }
     return min(140, maxWidth + 40)
-  }
-
-  /// Builds the list of menu items for the combo box.
-  /// Includes a "Random" option followed by all available background types.
-  /// - Returns: An array of strings representing the menu items.
-  private func buildMenuItems() -> [String] {
-    var items: [String] = ["Random"]
-    items.append(contentsOf: FruitType.allCases.map { type in
-      switch type {
-      case .rainbow:
-        return "Rainbow Bars"
-      case .solid:
-        return "Solid"
-      case .linearGradient:
-        return "Linear Gradient"
-      case .circularGradient:
-        return "Circular Gradient"
-      case .psychedelic:
-        return "Psychedelic"
-      case .california:
-        return "California"
-      case .liquid:
-        return "Liquid"
-      case .puppy:
-        return "Puppy"
-      case .warp:
-        return "Warp Speed"
-      case .ocean:
-        return "Irish Ocean"
-      case .glass:
-        return "Glass"
-      case .metallic:
-        return "Metallic"
-      case .pogo:
-        return "POGO"
-      case .glue:
-        return "Glue"
-      }
-    })
-    return items
   }
 }

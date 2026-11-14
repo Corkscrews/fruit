@@ -1,4 +1,3 @@
-// swiftlint:disable file_length
 import Cocoa
 import QuartzCore
 import Foundation
@@ -150,7 +149,6 @@ private struct MetalPsyFragmentUniforms {
   var referenceSize: Float
 }
 
-// swiftlint:disable:next type_body_length
 final class PsyLayer: CAMetalLayer, Background {
 
   // MARK: - Metal Objects
@@ -275,12 +273,12 @@ final class PsyLayer: CAMetalLayer, Background {
     setNeedsDisplay()
   }
 
-  private func easeInOut(_ t: CGFloat) -> CGFloat {
-    let p: CGFloat = 4.0
-    if t < 0.5 {
-      return 0.5 * pow(2.0 * t, p)
+  private func easeInOut(_ progress: CGFloat) -> CGFloat {
+    let exponent: CGFloat = 4.0
+    if progress < 0.5 {
+      return 0.5 * pow(2.0 * progress, exponent)
     } else {
-      return 1.0 - 0.5 * pow(2.0 * (1.0 - t), p)
+      return 1.0 - 0.5 * pow(2.0 * (1.0 - progress), exponent)
     }
   }
 
@@ -346,15 +344,15 @@ final class PsyLayer: CAMetalLayer, Background {
     renderEncoder.setRenderPipelineState(pipelineState)
     if let fruit = currentFruit, let leaf = currentLeaf {
       let body = fruit.bounds(including: leaf)
-      let fb = CGRect(x: body.minX - 4, y: body.minY - 4,
-                       width: body.width + 8, height: body.height + 8)
-      let cs = contentsScale
-      let sx = max(0, Int(fb.minX * cs))
-      let sy = max(0, Int((bounds.height - fb.maxY) * cs))
-      let sw = min(Int(fb.width * cs), texture.width - sx)
-      let sh = min(Int(fb.height * cs), texture.height - sy)
-      if sw > 0 && sh > 0 {
-        renderEncoder.setScissorRect(MTLScissorRect(x: sx, y: sy, width: sw, height: sh))
+      let paddedBody = CGRect(x: body.minX - 4, y: body.minY - 4,
+                              width: body.width + 8, height: body.height + 8)
+      let pixelScale = contentsScale
+      let scissorX = max(0, Int(paddedBody.minX * pixelScale))
+      let scissorY = max(0, Int((bounds.height - paddedBody.maxY) * pixelScale))
+      let scissorWidth = min(Int(paddedBody.width * pixelScale), texture.width - scissorX)
+      let scissorHeight = min(Int(paddedBody.height * pixelScale), texture.height - scissorY)
+      if scissorWidth > 0 && scissorHeight > 0 {
+        renderEncoder.setScissorRect(MTLScissorRect(x: scissorX, y: scissorY, width: scissorWidth, height: scissorHeight))
       }
     }
     renderEncoder.setVertexBuffer(vertexBuffer, offset: 0, index: 0)
@@ -370,4 +368,3 @@ final class PsyLayer: CAMetalLayer, Background {
     commandBuffer.commit()
   }
 }
-// swiftlint:enable file_length

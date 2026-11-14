@@ -1,3 +1,4 @@
+// swiftlint:disable file_length
 import Cocoa
 import QuartzCore
 import Foundation
@@ -714,32 +715,37 @@ final class CaliforniaLayer: CAMetalLayer, Background {
   /// 0 = night, 1 = day, from the local clock: day 07:00-18:00, night
   /// 20:00-05:00, with smooth two-hour dawn (05-07) and dusk (18-20).
   static func daylight(at date: Date, calendar: Calendar = .current) -> Float {
-    let c = calendar.dateComponents([.hour, .minute, .second], from: date)
-    let hour = Double(c.hour ?? 12) + Double(c.minute ?? 0) / 60 + Double(c.second ?? 0) / 3600
-    func ramp(_ a: Double, _ b: Double) -> Double {
-      let x = min(max((hour - a) / (b - a), 0), 1)
-      return x * x * (3 - 2 * x)
+    let parts = calendar.dateComponents([.hour, .minute, .second], from: date)
+    let hour = Double(parts.hour ?? 12) + Double(parts.minute ?? 0) / 60 + Double(parts.second ?? 0) / 3600
+    func ramp(_ start: Double, _ end: Double) -> Double {
+      let fraction = min(max((hour - start) / (end - start), 0), 1)
+      return fraction * fraction * (3 - 2 * fraction)
     }
     return Float(ramp(5, 7) * (1 - ramp(18, 20)))
   }
 
   // MARK: - Seasons
-  private var seasonWeights = (spring: Float(0), fall: Float(0), winter: Float(0))
+  struct SeasonWeights {
+    var spring: Float
+    var fall: Float
+    var winter: Float
+  }
+
+  private var seasonWeights = SeasonWeights(spring: 0, fall: 0, winter: 0)
 
   /// Season weights from the local date. Winter, spring, summer and autumn peak
   /// around the 20th of Jan, Apr, Jul and Oct; neighbouring seasons blend
   /// smoothly and the weights always add up to 1 (summer is what is left).
-  static func seasons(at date: Date, calendar: Calendar = .current)
-    -> (spring: Float, fall: Float, winter: Float) {
+  static func seasons(at date: Date, calendar: Calendar = .current) -> SeasonWeights {
     let day = Double(calendar.ordinality(of: .day, in: .year, for: date) ?? 1)
-    var s = ((day - 20) / 365.25 * 4).truncatingRemainder(dividingBy: 4)  // 0 winter, 1 spring, 2 summer, 3 autumn
-    if s < 0 { s += 4 }
-    func weight(_ k: Double) -> Float {
-      var d = s - k
-      if d > 2 { d -= 4 } else if d < -2 { d += 4 }
-      return abs(d) < 1 ? Float(pow(cos(Double.pi / 2 * d), 2)) : 0
+    var phase = ((day - 20) / 365.25 * 4).truncatingRemainder(dividingBy: 4)  // 0 winter, 1 spring, 2 summer, 3 autumn
+    if phase < 0 { phase += 4 }
+    func weight(_ season: Double) -> Float {
+      var offset = phase - season
+      if offset > 2 { offset -= 4 } else if offset < -2 { offset += 4 }
+      return abs(offset) < 1 ? Float(pow(cos(Double.pi / 2 * offset), 2)) : 0
     }
-    return (spring: weight(1), fall: weight(3), winter: weight(0))
+    return SeasonWeights(spring: weight(1), fall: weight(3), winter: weight(0))
   }
 
   // MARK: - Ladybird
@@ -755,17 +761,17 @@ final class CaliforniaLayer: CAMetalLayer, Background {
   private var nextCrossing: Float = 1
   private var bugSleep: CGFloat = 0
 
-  private func updateLadybird(_ dt: CGFloat) {
+  private func updateLadybird(_ deltaTime: CGFloat) {
     let bedtime = daylight < 0.5
     if bugCrossing == Self.bedCrossing {
       let midway = Self.crossingTime / 2
       if bedtime {
-        bugTime = min(bugTime + dt, midway)
-        if bugTime >= midway { bugSleep = min(bugSleep + dt / 3, 1) }
+        bugTime = min(bugTime + deltaTime, midway)
+        if bugTime >= midway { bugSleep = min(bugSleep + deltaTime / 3, 1) }
       } else if bugSleep > 0 {
-        bugSleep = max(bugSleep - dt / 3, 0)
+        bugSleep = max(bugSleep - deltaTime / 3, 0)
       } else {
-        bugTime += dt
+        bugTime += deltaTime
         if bugTime >= Self.crossingPeriod {
           bugTime = 0
           bugCrossing = nextCrossing
@@ -774,7 +780,7 @@ final class CaliforniaLayer: CAMetalLayer, Background {
       }
       return
     }
-    bugTime += dt
+    bugTime += deltaTime
     if bedtime && bugTime >= Self.crossingTime {
       bugTime = 0
       bugCrossing = Self.bedCrossing
@@ -808,7 +814,7 @@ final class CaliforniaLayer: CAMetalLayer, Background {
     createVertexBuffers()
 
     // Started at night: the ladybird is already asleep in its spot.
-    daylight = 1  // TEMP: forced day for testing; restore Self.daylight(at: Date())
+    daylight = Self.daylight(at: Date())
     seasonWeights = Self.seasons(at: Date())
     if daylight < 0.5 {
       bugCrossing = Self.bedCrossing
@@ -887,7 +893,7 @@ final class CaliforniaLayer: CAMetalLayer, Background {
 
   func update(deltaTime: CGFloat) {
     totalElapsedTime += deltaTime
-    daylight = 1  // TEMP: forced day for testing; restore Self.daylight(at: Date())
+    daylight = Self.daylight(at: Date())
     seasonWeights = Self.seasons(at: Date())
     updateLadybird(deltaTime)
     lastUpdateTime += deltaTime
@@ -906,19 +912,11 @@ final class CaliforniaLayer: CAMetalLayer, Background {
           let drawable = nextDrawable() else { return }
     let texture = drawable.texture
 
-    // The leaf is framed on the fruit, so detail scales with it, not the screen.
-    let cs = Float(contentsScale)
-    var center = SIMD2<Float>(Float(texture.width), Float(texture.height)) / 2
-    var radius = min(center.x, center.y)
-    if let fruit = currentFruit, let leaf = currentLeaf {
-      let body = fruit.bounds(including: leaf)
-      center = SIMD2<Float>(Float(body.midX), Float(bounds.height - body.midY)) * cs
-      radius = max(Float(body.height) / 2 * cs, 1)
-    }
+    let leaf = leafFrame(texture: texture)
     var uniforms = MetalCaliforniaFragmentUniforms(
       resolution: SIMD2<Float>(Float(texture.width), Float(texture.height)),
-      center: center,
-      radius: radius,
+      center: leaf.center,
+      radius: leaf.radius,
       time: Float(totalElapsedTime),
       daylight: daylight,
       bugU: Float(bugTime / Self.crossingTime),
@@ -944,19 +942,7 @@ final class CaliforniaLayer: CAMetalLayer, Background {
     }
 
     renderEncoder.setRenderPipelineState(pipelineState)
-    if let fruit = currentFruit, let leaf = currentLeaf {
-      let body = fruit.bounds(including: leaf)
-      let fb = CGRect(x: body.minX - 4, y: body.minY - 4,
-                       width: body.width + 8, height: body.height + 8)
-      let cs = contentsScale
-      let sx = max(0, Int(fb.minX * cs))
-      let sy = max(0, Int((bounds.height - fb.maxY) * cs))
-      let sw = min(Int(fb.width * cs), texture.width - sx)
-      let sh = min(Int(fb.height * cs), texture.height - sy)
-      if sw > 0 && sh > 0 {
-        renderEncoder.setScissorRect(MTLScissorRect(x: sx, y: sy, width: sw, height: sh))
-      }
-    }
+    applyScissorRect(on: renderEncoder, texture: texture)
     renderEncoder.setVertexBuffer(vertexBuffer, offset: 0, index: 0)
     renderEncoder.setFragmentBytes(
       &uniforms,
@@ -969,4 +955,36 @@ final class CaliforniaLayer: CAMetalLayer, Background {
     commandBuffer.present(drawable)
     commandBuffer.commit()
   }
+
+  /// The leaf is framed on the fruit, so detail scales with it, not the screen.
+  /// Centre and radius in drawable pixels; the whole texture until a fruit is set.
+  private func leafFrame(texture: MTLTexture) -> (center: SIMD2<Float>, radius: Float) {
+    let pixelScale = Float(contentsScale)
+    var center = SIMD2<Float>(Float(texture.width), Float(texture.height)) / 2
+    var radius = min(center.x, center.y)
+    if let fruit = currentFruit, let leaf = currentLeaf {
+      let body = fruit.bounds(including: leaf)
+      center = SIMD2<Float>(Float(body.midX), Float(bounds.height - body.midY)) * pixelScale
+      radius = max(Float(body.height) / 2 * pixelScale, 1)
+    }
+    return (center, radius)
+  }
+
+  private func applyScissorRect(on encoder: MTLRenderCommandEncoder, texture: MTLTexture) {
+    guard let fruit = currentFruit, let leaf = currentLeaf else { return }
+    let body = fruit.bounds(including: leaf)
+    let paddedBody = CGRect(x: body.minX - 4, y: body.minY - 4,
+                            width: body.width + 8, height: body.height + 8)
+    let pixelScale = contentsScale
+    let scissorX = max(0, Int(paddedBody.minX * pixelScale))
+    let scissorY = max(0, Int((bounds.height - paddedBody.maxY) * pixelScale))
+    let scissorWidth = min(Int(paddedBody.width * pixelScale), texture.width - scissorX)
+    let scissorHeight = min(Int(paddedBody.height * pixelScale), texture.height - scissorY)
+    if scissorWidth > 0 && scissorHeight > 0 {
+      encoder.setScissorRect(MTLScissorRect(x: scissorX, y: scissorY,
+                                            width: scissorWidth, height: scissorHeight))
+    }
+  }
 }
+
+// swiftlint:enable file_length

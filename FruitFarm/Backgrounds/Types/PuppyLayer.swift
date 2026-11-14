@@ -2,7 +2,6 @@ import Cocoa
 import QuartzCore
 import Foundation
 import MetalKit
-import Accelerate
 
 private let metalPuppyShaderSource = """
 using namespace metal;
@@ -223,189 +222,6 @@ final class PuppyLayer: CAMetalLayer, Background {
     )
   }
 
-  /// Rasterises the fruit and leaf vector paths into the two height channels the
-  /// shader reads: R = bevel ramp from an exact distance transform (so the round-over
-  /// starts right on the outline), G = wide blur for the crown.
-  /// Static and non-private: GlassLayer bakes the same map.
-  /// Takes path copies, not Fruit/Leaf, so it can run off the main thread.
-  static func bakeHeightTexture(
-    device: MTLDevice?, rect: CGRect, contentsScale cs: CGFloat, fruitPath: CGPath, leafPath: CGPath
-  ) -> MTLTexture? {
-    let width = Int(rect.width * cs)
-    let height = Int(rect.height * cs)
-    // Baked at 2x and averaged down so the bevel isn't built on the mask's pixel staircase.
-    let ss = 2
-    let bigW = width * ss, bigH = height * ss
-    let bigScale = cs * CGFloat(ss)
-    guard let device = device, width > 0, height > 0,
-          let context = CGContext(
-            data: nil, width: bigW, height: bigH, bitsPerComponent: 8, bytesPerRow: 0,
-            space: CGColorSpaceCreateDeviceGray(), bitmapInfo: CGImageAlphaInfo.none.rawValue
-          ) else { return nil }
-    // CGContext memory already starts at the top row, matching Metal's texture rows.
-    context.scaleBy(x: bigScale, y: bigScale)
-    context.translateBy(x: -rect.minX, y: -rect.minY)
-    context.setFillColor(gray: 1, alpha: 1)
-    context.addPath(fruitPath)
-    context.addPath(leafPath)
-    context.fillPath()
-    guard let maskData = context.data else { return nil }
-
-    let logoWidth = Float(fruitPath.boundingBoxOfPath.width * bigScale)
-    let maskBytes = maskData.bindMemory(to: UInt8.self, capacity: context.bytesPerRow * bigH)
-    var ramp = [Float](repeating: 0, count: bigW * bigH)
-    var crown = [Float](repeating: 0, count: bigW * bigH)
-    for y in 0..<bigH {
-      for x in 0..<bigW where maskBytes[y * context.bytesPerRow + x] > 127 {
-        ramp[y * bigW + x] = 1e20
-        crown[y * bigW + x] = 1
-      }
-    }
-    PuppyLayer.squaredDistanceTransform(&ramp, width: bigW, height: bigH)
-    let bevelPx = logoWidth * 0.16
-    for index in ramp.indices {
-      ramp[index] = min(max(ramp[index].squareRoot() - 0.5, 0) / bevelPx, 1)
-    }
-    // Exact float blurs: Core Image's large Gaussian approximates and striped the face.
-    PuppyLayer.gaussianBlur(&ramp, width: bigW, height: bigH, sigma: logoWidth * 0.008)
-
-    // Wide dome for the body only, so its centre isn't flat. Re-fill the mask with just the leaf.
-    context.clear(CGRect(x: rect.minX, y: rect.minY, width: rect.width, height: rect.height))
-    context.addPath(leafPath)
-    context.fillPath()
-    var dome = [Float](repeating: 0, count: bigW * bigH)
-    var leafDistance = [Float](repeating: 1e20, count: bigW * bigH)
-    for y in 0..<bigH {
-      for x in 0..<bigW {
-        let index = y * bigW + x
-        if maskBytes[y * context.bytesPerRow + x] > 127 {
-          leafDistance[index] = 0
-        } else {
-          dome[index] = crown[index]
-        }
-      }
-    }
-    PuppyLayer.squaredDistanceTransform(&leafDistance, width: bigW, height: bigH)
-    PuppyLayer.gaussianBlur(&dome, width: bigW, height: bigH, sigma: logoWidth * 0.35)
-    PuppyLayer.gaussianBlur(&crown, width: bigW, height: bigH, sigma: logoWidth * 0.16)
-    let domePeak = max(dome.max() ?? 1, 1e-6)
-    let leafFade = logoWidth * 0.03
-    for index in crown.indices {
-      // Zero on the leaf (plus the 2 texels the shader's normals sample), full strength across the gap.
-      let weight = min(max(leafDistance[index].squareRoot() - Float(ss * 3), 0) / leafFade, 1)
-      crown[index] += 0.8 * weight * dome[index] / domePeak
-      leafDistance[index] = 1 - weight  // now "leafness", 1 on the leaf
-    }
-
-    // R = bevel ramp, G = crown, B = leafness, each the average of its 2x2 block.
-    var packed = [Float](repeating: 0, count: width * height * 4)
-    let area = Float(ss * ss)
-    for y in 0..<height {
-      for x in 0..<width {
-        var rSum: Float = 0, gSum: Float = 0, bSum: Float = 0
-        for dy in 0..<ss {
-          for dx in 0..<ss {
-            let index = (y * ss + dy) * bigW + x * ss + dx
-            rSum += ramp[index]
-            gSum += crown[index]
-            bSum += leafDistance[index]
-          }
-        }
-        packed[(y * width + x) * 4] = rSum / area
-        packed[(y * width + x) * 4 + 1] = gSum / area
-        packed[(y * width + x) * 4 + 2] = bSum / area
-      }
-    }
-
-    // 32-bit float: 8-bit or half-float heights stair-step the mirrored highlights.
-    let descriptor = MTLTextureDescriptor.texture2DDescriptor(
-      pixelFormat: .rgba32Float, width: width, height: height, mipmapped: false
-    )
-    descriptor.usage = [.shaderRead]
-    guard let texture = device.makeTexture(descriptor: descriptor) else { return nil }
-    packed.withUnsafeBytes { bytes in
-      texture.replace(
-        region: MTLRegionMake2D(0, 0, width, height), mipmapLevel: 0,
-        withBytes: bytes.baseAddress!, bytesPerRow: width * 4 * MemoryLayout<Float>.stride
-      )
-    }
-    return texture
-  }
-
-  /// Gaussian approximated by three box blurs per axis (running sums, zero outside).
-  private static func gaussianBlur(_ grid: inout [Float], width: Int, height: Int, sigma: Float) {
-    // 6 box passes: 3 left curvature kinks the glossy shading showed as straight lines.
-    let passes = 6
-    let radius = Int((((1 + 12 * sigma * sigma / Float(passes)).squareRoot()) - 1) / 2 + 0.5)
-    guard radius > 0 else { return }
-    // All passes run in a padded line so the spill past the edge is kept; cropping it
-    // between passes left straight creases. Exact, since rows outside the grid are empty.
-    let pad = passes * radius
-    let window = vDSP_Length(2 * radius + 1)
-    var norm = 1 / Double(window)
-    // vDSP, not Swift loops: this is most of the bake and a debug build ran it ~50x slower.
-    // `radius` extra zeros on each side keep the sliding window inside the buffer.
-    var src = [Double](repeating: 0, count: max(width, height) + 2 * pad + 2 * radius)
-    var dst = src
-    grid.withUnsafeMutableBufferPointer { cells in
-      src.withUnsafeMutableBufferPointer { srcBuffer in
-        dst.withUnsafeMutableBufferPointer { dstBuffer in
-          guard let cells = cells.baseAddress, var from = srcBuffer.baseAddress,
-                var to = dstBuffer.baseAddress else { return }
-          func blurLine(start: Int, step: Int, count: Int) {
-            let total = vDSP_Length(count + 2 * pad)
-            vDSP_vclrD(from, 1, total + 2 * vDSP_Length(radius))
-            vDSP_vspdp(cells + start, step, from + radius + pad, 1, vDSP_Length(count))
-            for _ in 0..<passes {
-              vDSP_vswsumD(from, 1, to + radius, 1, total, window)
-              vDSP_vsmulD(to + radius, 1, &norm, to + radius, 1, total)
-              swap(&from, &to)
-            }
-            vDSP_vdpsp(from + radius + pad, 1, cells + start, step, vDSP_Length(count))
-          }
-          for y in 0..<height { blurLine(start: y * width, step: 1, count: width) }
-          for x in 0..<width { blurLine(start: x, step: width, count: height) }
-        }
-      }
-    }
-  }
-
-  /// Felzenszwalb–Huttenlocher squared Euclidean distance transform, in place.
-  /// Input: 0 at outside pixels, a huge value inside. Rows first, then columns.
-  private static func squaredDistanceTransform(_ grid: inout [Float], width: Int, height: Int) {
-    let longest = max(width, height)
-    var sites = [Int](repeating: 0, count: longest)
-    var breaks = [Float](repeating: 0, count: longest + 1)
-    var line = [Float](repeating: 0, count: longest)
-    func pass(start: Int, step: Int, count: Int) {
-      for q in 0..<count { line[q] = grid[start + q * step] }
-      var k = 0
-      sites[0] = 0
-      breaks[0] = -.infinity
-      breaks[1] = .infinity
-      for q in 1..<count {
-        var s: Float
-        repeat {
-          let p = sites[k]
-          s = ((line[q] + Float(q * q)) - (line[p] + Float(p * p))) / Float(2 * (q - p))
-          k -= 1
-        } while s <= breaks[k + 1]
-        k += 2
-        sites[k] = q
-        breaks[k] = s
-        breaks[k + 1] = .infinity
-      }
-      k = 0
-      for q in 0..<count {
-        while breaks[k + 1] < Float(q) { k += 1 }
-        let p = sites[k]
-        grid[start + q * step] = Float((q - p) * (q - p)) + line[p]
-      }
-    }
-    for y in 0..<height { pass(start: y * width, step: 1, count: width) }
-    for x in 0..<width { pass(start: x, step: width, count: height) }
-  }
-
   private weak var currentFruit: Fruit?
   private weak var currentLeaf: Leaf?
 
@@ -445,29 +261,12 @@ final class PuppyLayer: CAMetalLayer, Background {
 
     // The paths are re-transformed after layout, so check here rather than in update(frame:).
     let rect = fruit.bounds(including: leaf).insetBy(dx: -4, dy: -4)
-    if rect != bakedRect && !isBaking {
-      // Baked off the main thread so the app doesn't freeze; the logo stays black until it lands.
-      isBaking = true
-      let device = metalDevice, scale = contentsScale
-      let fruitPath = fruit.transformedPath.quartzPath, leafPath = leaf.transformedPath.quartzPath
-      DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-        let baked = PuppyLayer.bakeHeightTexture(
-          device: device, rect: rect, contentsScale: scale, fruitPath: fruitPath, leafPath: leafPath
-        )
-        DispatchQueue.main.async {
-          guard let self = self else { return }
-          self.heightTexture = baked
-          self.bakedRect = rect
-          self.isBaking = false
-          self.setNeedsDisplay()  // re-checks the rect, in case it changed meanwhile
-        }
-      }
-    }
+    bakeHeightIfNeeded(rect: rect, fruit: fruit, leaf: leaf)
 
-    let cs = contentsScale
+    let pixelScale = contentsScale
     var uniforms = MetalPuppyFragmentUniforms(
-      body_origin_px: SIMD2<Float>(Float(rect.minX * cs), Float((bounds.height - rect.maxY) * cs)),
-      body_size_px: SIMD2<Float>(Float(rect.width * cs), Float(rect.height * cs)),
+      body_origin_px: SIMD2<Float>(Float(rect.minX * pixelScale), Float((bounds.height - rect.maxY) * pixelScale)),
+      body_size_px: SIMD2<Float>(Float(rect.width * pixelScale), Float(rect.height * pixelScale)),
       time: Float(totalElapsedTime)
     )
 
@@ -487,13 +286,7 @@ final class PuppyLayer: CAMetalLayer, Background {
 
     if let heightTexture = heightTexture {
       renderEncoder.setRenderPipelineState(pipelineState)
-      let sx = max(0, Int(rect.minX * cs))
-      let sy = max(0, Int((bounds.height - rect.maxY) * cs))
-      let sw = min(Int(rect.width * cs), texture.width - sx)
-      let sh = min(Int(rect.height * cs), texture.height - sy)
-      if sw > 0 && sh > 0 {
-        renderEncoder.setScissorRect(MTLScissorRect(x: sx, y: sy, width: sw, height: sh))
-      }
+      applyScissorRect(on: renderEncoder, texture: texture, rect: rect)
       renderEncoder.setVertexBuffer(vertexBuffer, offset: 0, index: 0)
       renderEncoder.setFragmentBytes(
         &uniforms,
@@ -507,5 +300,37 @@ final class PuppyLayer: CAMetalLayer, Background {
     renderEncoder.endEncoding()
     commandBuffer.present(drawable)
     commandBuffer.commit()
+  }
+
+  private func bakeHeightIfNeeded(rect: CGRect, fruit: Fruit, leaf: Leaf) {
+    guard rect != bakedRect && !isBaking else { return }
+    // Baked off the main thread so the app doesn't freeze; the logo stays black until it lands.
+    isBaking = true
+    let device = metalDevice, scale = contentsScale
+    let fruitPath = fruit.transformedPath.quartzPath, leafPath = leaf.transformedPath.quartzPath
+    DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+      let baked = HeightMapBaker.bake(
+        device: device, rect: rect, contentsScale: scale, fruitPath: fruitPath, leafPath: leafPath
+      )
+      DispatchQueue.main.async {
+        guard let self = self else { return }
+        self.heightTexture = baked
+        self.bakedRect = rect
+        self.isBaking = false
+        self.setNeedsDisplay()  // re-checks the rect, in case it changed meanwhile
+      }
+    }
+  }
+
+  private func applyScissorRect(on encoder: MTLRenderCommandEncoder, texture: MTLTexture, rect: CGRect) {
+    let pixelScale = contentsScale
+    let scissorX = max(0, Int(rect.minX * pixelScale))
+    let scissorY = max(0, Int((bounds.height - rect.maxY) * pixelScale))
+    let scissorWidth = min(Int(rect.width * pixelScale), texture.width - scissorX)
+    let scissorHeight = min(Int(rect.height * pixelScale), texture.height - scissorY)
+    if scissorWidth > 0 && scissorHeight > 0 {
+      encoder.setScissorRect(MTLScissorRect(x: scissorX, y: scissorY,
+                                            width: scissorWidth, height: scissorHeight))
+    }
   }
 }

@@ -302,29 +302,12 @@ final class GlassLayer: CAMetalLayer, Background {
 
     // The paths are re-transformed after layout, so check here rather than in update(frame:).
     let rect = fruit.bounds(including: leaf).insetBy(dx: -4, dy: -4)
-    if rect != bakedRect && !isBaking {
-      // Baked off the main thread so the app doesn't freeze; the logo stays black until it lands.
-      isBaking = true
-      let device = metalDevice, scale = contentsScale
-      let fruitPath = fruit.transformedPath.quartzPath, leafPath = leaf.transformedPath.quartzPath
-      DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-        let baked = PuppyLayer.bakeHeightTexture(
-          device: device, rect: rect, contentsScale: scale, fruitPath: fruitPath, leafPath: leafPath
-        )
-        DispatchQueue.main.async {
-          guard let self = self else { return }
-          self.heightTexture = baked
-          self.bakedRect = rect
-          self.isBaking = false
-          self.setNeedsDisplay()  // re-checks the rect, in case it changed meanwhile
-        }
-      }
-    }
+    bakeHeightIfNeeded(rect: rect, fruit: fruit, leaf: leaf)
 
-    let cs = contentsScale
+    let pixelScale = contentsScale
     var uniforms = MetalGlassFragmentUniforms(
-      body_origin_px: SIMD2<Float>(Float(rect.minX * cs), Float((bounds.height - rect.maxY) * cs)),
-      body_size_px: SIMD2<Float>(Float(rect.width * cs), Float(rect.height * cs)),
+      body_origin_px: SIMD2<Float>(Float(rect.minX * pixelScale), Float((bounds.height - rect.maxY) * pixelScale)),
+      body_size_px: SIMD2<Float>(Float(rect.width * pixelScale), Float(rect.height * pixelScale)),
       time: Float(totalElapsedTime)
     )
 
@@ -344,13 +327,7 @@ final class GlassLayer: CAMetalLayer, Background {
 
     if let heightTexture = heightTexture {
       renderEncoder.setRenderPipelineState(pipelineState)
-      let sx = max(0, Int(rect.minX * cs))
-      let sy = max(0, Int((bounds.height - rect.maxY) * cs))
-      let sw = min(Int(rect.width * cs), texture.width - sx)
-      let sh = min(Int(rect.height * cs), texture.height - sy)
-      if sw > 0 && sh > 0 {
-        renderEncoder.setScissorRect(MTLScissorRect(x: sx, y: sy, width: sw, height: sh))
-      }
+      applyScissorRect(on: renderEncoder, texture: texture, rect: rect)
       renderEncoder.setVertexBuffer(vertexBuffer, offset: 0, index: 0)
       renderEncoder.setFragmentBytes(
         &uniforms,
@@ -364,5 +341,37 @@ final class GlassLayer: CAMetalLayer, Background {
     renderEncoder.endEncoding()
     commandBuffer.present(drawable)
     commandBuffer.commit()
+  }
+
+  private func bakeHeightIfNeeded(rect: CGRect, fruit: Fruit, leaf: Leaf) {
+    guard rect != bakedRect && !isBaking else { return }
+    // Baked off the main thread so the app doesn't freeze; the logo stays black until it lands.
+    isBaking = true
+    let device = metalDevice, scale = contentsScale
+    let fruitPath = fruit.transformedPath.quartzPath, leafPath = leaf.transformedPath.quartzPath
+    DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+      let baked = HeightMapBaker.bake(
+        device: device, rect: rect, contentsScale: scale, fruitPath: fruitPath, leafPath: leafPath
+      )
+      DispatchQueue.main.async {
+        guard let self = self else { return }
+        self.heightTexture = baked
+        self.bakedRect = rect
+        self.isBaking = false
+        self.setNeedsDisplay()  // re-checks the rect, in case it changed meanwhile
+      }
+    }
+  }
+
+  private func applyScissorRect(on encoder: MTLRenderCommandEncoder, texture: MTLTexture, rect: CGRect) {
+    let pixelScale = contentsScale
+    let scissorX = max(0, Int(rect.minX * pixelScale))
+    let scissorY = max(0, Int((bounds.height - rect.maxY) * pixelScale))
+    let scissorWidth = min(Int(rect.width * pixelScale), texture.width - scissorX)
+    let scissorHeight = min(Int(rect.height * pixelScale), texture.height - scissorY)
+    if scissorWidth > 0 && scissorHeight > 0 {
+      encoder.setScissorRect(MTLScissorRect(x: scissorX, y: scissorY,
+                                            width: scissorWidth, height: scissorHeight))
+    }
   }
 }

@@ -81,19 +81,19 @@ final class DebugStatsView: NSView {
     }
 
     var totalCPU: Double = 0
-    for i in 0..<Int(threadCount) {
+    for index in 0..<Int(threadCount) {
       var info = thread_basic_info()
       var infoCount = mach_msg_type_number_t(
         MemoryLayout<thread_basic_info_data_t>.size / MemoryLayout<natural_t>.size
       )
-      let kr = withUnsafeMutablePointer(to: &info) {
+      let threadResult = withUnsafeMutablePointer(to: &info) {
         $0.withMemoryRebound(to: integer_t.self, capacity: Int(infoCount)) {
-          thread_info(threads[i], thread_flavor_t(THREAD_BASIC_INFO), $0, &infoCount)
+          thread_info(threads[index], thread_flavor_t(THREAD_BASIC_INFO), $0, &infoCount)
         }
       }
       // task_threads hands us a send right per thread; release it or it leaks.
-      mach_port_deallocate(mach_task_self_, threads[i])
-      if kr == KERN_SUCCESS && (info.flags & TH_FLAGS_IDLE) == 0 {
+      mach_port_deallocate(mach_task_self_, threads[index])
+      if threadResult == KERN_SUCCESS && (info.flags & TH_FLAGS_IDLE) == 0 {
         totalCPU += Double(info.cpu_usage) / Double(TH_USAGE_SCALE) * 100.0
       }
     }
@@ -120,8 +120,7 @@ final class DebugStatsView: NSView {
         current, &properties, kCFAllocatorDefault, 0
       ) == kIOReturnSuccess,
         let dict = properties?.takeRetainedValue() as? [String: Any],
-        let stats = dict["PerformanceStatistics"] as? [String: Any]
-      {
+        let stats = dict["PerformanceStatistics"] as? [String: Any] {
         if let utilization = stats["GPU Activity(%)"] as? Int {
           return Double(utilization)
         }

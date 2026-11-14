@@ -354,12 +354,12 @@ final class POGOLayer: CAMetalLayer, Background {
       let fruitBounds = CGRect(x: body.minX - 4, y: body.minY - 4,
                                width: body.width + 8, height: body.height + 8)
       let scale = contentsScale
-      let x = max(0, Int(fruitBounds.minX * scale))
-      let y = max(0, Int((bounds.height - fruitBounds.maxY) * scale))
-      let width = min(Int(fruitBounds.width * scale), texture.width - x)
-      let height = min(Int(fruitBounds.height * scale), texture.height - y)
+      let scissorX = max(0, Int(fruitBounds.minX * scale))
+      let scissorY = max(0, Int((bounds.height - fruitBounds.maxY) * scale))
+      let width = min(Int(fruitBounds.width * scale), texture.width - scissorX)
+      let height = min(Int(fruitBounds.height * scale), texture.height - scissorY)
       if width > 0 && height > 0 {
-        renderEncoder.setScissorRect(MTLScissorRect(x: x, y: y, width: width, height: height))
+        renderEncoder.setScissorRect(MTLScissorRect(x: scissorX, y: scissorY, width: width, height: height))
       }
     }
     renderEncoder.setVertexBuffer(vertexBuffer, offset: 0, index: 0)
