@@ -153,7 +153,7 @@ private struct GlueSimulation {
     var ejecting = false
   }
 
-  static let maxBlobs = 900
+  static let maxBlobs = 600
   static let spawnRadii: ClosedRange<Float> = 0.007...0.018
   static let spawnClearance: Float = 0.028
   static let spawnInterval: Float = 0.008
@@ -188,33 +188,65 @@ private struct GlueSimulation {
       spawnTimer -= Self.spawnInterval
       spawn(grown: false)
     }
-    integrate(dt, accelerations())
-    mergeAndEject(dt)
+    // One pair search serves both passes: blobs move far less than `reach` per
+    // step, so anything that can merge after integrating was already in reach.
+    let pairs = nearPairs()
+    integrate(dt, accelerations(pairs))
+    mergeAndEject(dt, pairs)
   }
 
-  private func accelerations() -> [SIMD2<Float>] {
-    var acc = [SIMD2<Float>](repeating: .zero, count: blobs.count)
-    for i in blobs.indices {
-      for j in (i + 1)..<blobs.count {
-        let a = blobs[i], b = blobs[j]
-        let delta = b.pos - a.pos
-        let dist = max(simd_length(delta), 1e-4)
-        let dir = delta / dist
-        let gap = dist - a.radius - b.radius
-        if a.ejecting != b.ejecting {
-          // The leaving blob shoves the others aside instead of absorbing them.
-          if gap < 0 {
-            let push = dir * (-gap) * 3
-            if a.ejecting { acc[j] += push } else { acc[i] -= push }
-          }
-          continue
+  /// Index pairs (i < j, row order) whose gap is under `reach`.
+  /// shortcut: still O(n^2), on bare floats; use a grid if maxBlobs grows.
+  private func nearPairs() -> [(Int, Int)] {
+    let n = blobs.count
+    // Flat x, y, r and raw-pointer while loops: SIMD maths and Range iteration
+    // are generic calls in unoptimised (Debug) builds and dominated the frame.
+    var flat = [Float]()
+    flat.reserveCapacity(n * 3)
+    for b in blobs {
+      flat.append(b.pos.x)
+      flat.append(b.pos.y)
+      flat.append(b.radius)
+    }
+    var pairs: [(Int, Int)] = []
+    flat.withUnsafeBufferPointer { buffer in
+      guard let f = buffer.baseAddress else { return }
+      var i = 0
+      while i < n {
+        let ax = f[i * 3], ay = f[i * 3 + 1], ar = f[i * 3 + 2] + Self.reach
+        var j = i + 1
+        while j < n {
+          let dx = f[j * 3] - ax, dy = f[j * 3 + 1] - ay, range = ar + f[j * 3 + 2]
+          if dx * dx + dy * dy < range * range { pairs.append((i, j)) }
+          j += 1
         }
-        guard !a.ejecting, gap < Self.reach else { continue }
-        let strength = Self.pull * (gap < 0 ? 3 : 1 - gap / Self.reach)
-        let ma = a.radius * a.radius, mb = b.radius * b.radius
-        acc[i] += dir * strength * mb / (ma + mb)
-        acc[j] -= dir * strength * ma / (ma + mb)
+        i += 1
       }
+    }
+    return pairs
+  }
+
+  private func accelerations(_ pairs: [(Int, Int)]) -> [SIMD2<Float>] {
+    var acc = [SIMD2<Float>](repeating: .zero, count: blobs.count)
+    for (i, j) in pairs {
+      let a = blobs[i], b = blobs[j]
+      let delta = b.pos - a.pos
+      let dist = max(simd_length(delta), 1e-4)
+      let dir = delta / dist
+      let gap = dist - a.radius - b.radius
+      if a.ejecting != b.ejecting {
+        // The leaving blob shoves the others aside instead of absorbing them.
+        if gap < 0 {
+          let push = dir * (-gap) * 3
+          if a.ejecting { acc[j] += push } else { acc[i] -= push }
+        }
+        continue
+      }
+      guard !a.ejecting, gap < Self.reach else { continue }
+      let strength = Self.pull * (gap < 0 ? 3 : 1 - gap / Self.reach)
+      let ma = a.radius * a.radius, mb = b.radius * b.radius
+      acc[i] += dir * strength * mb / (ma + mb)
+      acc[j] -= dir * strength * ma / (ma + mb)
     }
     return acc
   }
@@ -239,26 +271,25 @@ private struct GlueSimulation {
     }
   }
 
-  private mutating func mergeAndEject(_ dt: Float) {
+  private mutating func mergeAndEject(_ dt: Float, _ pairs: [(Int, Int)]) {
     let share = min(1, Self.drain * dt)
-    for i in blobs.indices {
-      for j in (i + 1)..<blobs.count {
-        let a = blobs[i], b = blobs[j]
-        guard !a.ejecting, !b.ejecting,
-              simd_length(a.pos - b.pos) < max(a.radius, b.radius) else { continue }
-        // Area flows from the smaller to the larger over several frames, so
-        // nothing jumps: the small one shrinks away, the big one swells and shifts.
-        let (big, small) = a.radius >= b.radius ? (i, j) : (j, i)
-        let mb = blobs[big].radius * blobs[big].radius
-        let ms = blobs[small].radius * blobs[small].radius
-        let dm = ms * share
-        blobs[big].pos += (blobs[small].pos - blobs[big].pos) * dm / (mb + dm)
-        blobs[big].vel += (blobs[small].vel - blobs[big].vel) * dm / (mb + dm)
-        blobs[big].radius = sqrt(mb + dm)
-        blobs[small].radius = sqrt(ms - dm)
-      }
-      if blobs[i].radius > Self.ejectRadius { blobs[i].ejecting = true }
+    for (i, j) in pairs {
+      let a = blobs[i], b = blobs[j]
+      let touch = max(a.radius, b.radius)
+      guard simd_length_squared(a.pos - b.pos) < touch * touch,
+            !a.ejecting, !b.ejecting else { continue }
+      // Area flows from the smaller to the larger over several frames, so
+      // nothing jumps: the small one shrinks away, the big one swells and shifts.
+      let (big, small) = a.radius >= b.radius ? (i, j) : (j, i)
+      let mb = blobs[big].radius * blobs[big].radius
+      let ms = blobs[small].radius * blobs[small].radius
+      let dm = ms * share
+      blobs[big].pos += (blobs[small].pos - blobs[big].pos) * dm / (mb + dm)
+      blobs[big].vel += (blobs[small].vel - blobs[big].vel) * dm / (mb + dm)
+      blobs[big].radius = sqrt(mb + dm)
+      blobs[small].radius = sqrt(ms - dm)
     }
+    for i in blobs.indices where blobs[i].radius > Self.ejectRadius { blobs[i].ejecting = true }
     // An ejecting blob goes once its whole field (at most 2r) is off the body, so
     // its neighbours don't snap thinner when it disappears.
     blobs.removeAll { blob in
@@ -316,6 +347,16 @@ final class GlueLayer: CAMetalLayer, Background {
     setupMetal()
     setupPipeline()
     createVertexBuffers()
+    syncExtent()
+  }
+
+  /// The first step seeds blobs across `extent`, so it must match the body before that,
+  /// not only once `display()` runs, or a tall body starts with empty top and bottom bands.
+  private func syncExtent() {
+    guard let fruit = currentFruit, let leaf = currentLeaf else { return }
+    let body = fruit.bounds(including: leaf)
+    let half = SIMD2<Float>(Float(body.width), Float(body.height)) * 0.5
+    simulation.extent = half / max(min(half.x, half.y), 1e-3)
   }
 
   required init?(coder: NSCoder) {
@@ -379,22 +420,25 @@ final class GlueLayer: CAMetalLayer, Background {
     currentFruit = fruit
     currentLeaf = leaf
     setFrameAndDrawableSizeWithoutAnimation(frame)
+    syncExtent()
     setNeedsDisplay()
   }
 
   func config(fruit: Fruit, leaf: Leaf) {
     currentFruit = fruit
     currentLeaf = leaf
+    syncExtent()
     setNeedsDisplay()
   }
 
   func update(deltaTime: CGFloat) {
     totalElapsedTime += deltaTime
     lastUpdateTime += deltaTime
-    // Cap the step so a stall (sleep, preview pause) doesn't fling blobs.
-    simulation.step(Float(min(deltaTime, 0.1)))
 
     if lastUpdateTime >= minUpdateInterval {
+      // Simulate only for frames that get drawn (30 Hz), not on every tick.
+      // Cap the step so a stall (sleep, preview pause) doesn't fling blobs.
+      simulation.step(Float(min(lastUpdateTime, 0.1)))
       lastUpdateTime = 0
       setNeedsDisplay()
     }
