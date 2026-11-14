@@ -88,8 +88,26 @@ fragment float4 fragment_shader_warp(
         float2 st = warp_uv * ld.scale;
         float2 gid = floor(st);
 
-        for (int dy = -1; dy <= 1; dy++) {
-            for (int dx = -1; dx <= 1; dx++) {
+        // Skip neighbour cells that cannot reach this pixel. A star's visible
+        // radius (b >= 0.0001 below) is at most ~0.30 cells, so a neighbour only
+        // matters when the pixel is within 0.35 of that cell edge. Streaks run
+        // from the star toward the origin, so with streaks on the outward
+        // neighbour is always kept (both sides near the axes, where a streak
+        // can cross the origin).
+        float2 f = st - gid;
+        float2 lo = -step(f, float2(0.35));
+        float2 hi = step(float2(0.65), f);
+        if (u.streakMix > 0.01) {
+            float2 outward = step(float2(0.0), st);
+            float2 near_axis = step(abs(st), float2(2.0));
+            hi = max(hi, max(outward, near_axis));
+            lo = min(lo, -max(1.0 - outward, near_axis));
+        }
+        int2 ilo = int2(lo);
+        int2 ihi = int2(hi);
+
+        for (int dy = ilo.y; dy <= ihi.y; dy++) {
+            for (int dx = ilo.x; dx <= ihi.x; dx++) {
                 float2 off = float2(float(dx), float(dy));
                 float2 id = gid + off;
 

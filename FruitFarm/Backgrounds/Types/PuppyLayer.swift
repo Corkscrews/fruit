@@ -1,4 +1,3 @@
-// swiftlint:disable file_length
 import Cocoa
 import QuartzCore
 import Foundation
@@ -24,132 +23,99 @@ vertex VertexOut vertex_shader_puppy(
 }
 
 struct PuppyUniforms {
-    float2 resolution;
+    float2 body_origin_px;
+    float2 body_size_px;
     float time;
+    float fill_hue_offset;
 };
 
-float3 puppy_hsv2rgb(float3 c) {
-    float3 p = abs(fract(float3(c.x) + float3(0.0, 2.0/3.0, 1.0/3.0)) * 6.0 - 3.0);
-    return c.z * mix(float3(1.0), clamp(p - 1.0, 0.0, 1.0), c.y);
+// Height of the logo slab. R = distance inward from the outline as a 0..1 ramp
+// across the bevel, G = wide blur of the silhouette (slight crown on the face).
+float puppy_height(texture2d<float> tex, float2 uv) {
+    constexpr sampler s(filter::linear, address::clamp_to_edge);
+    float3 b = tex.sample(s, uv).rgb;
+    float k = 1.0 - clamp(b.r, 0.0, 1.0);
+    // Body (B = 0): cubic, so curvature fades to zero where the bevel meets the face (no ring line).
+    // Leaf (B = 1): the original quarter circle.
+    float bevel = sqrt(1.0 - k * k * mix(k, 1.0, b.b));
+    return 0.55 * bevel + 0.45 * b.g;
 }
 
-float puppy_smin(float a, float b, float k) {
-    float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);
-    return mix(b, a, h) - k * h * (1.0 - h);
+// Distant round lamp: a soft disc with a wide glow around it.
+float puppy_lamp(float2 q, float2 center, float radius) {
+    float d = length(q - center) / radius;
+    return 1.0 - smoothstep(0.0, 1.0, d) + 0.25 * exp(-d * d * 0.8);
 }
 
-float puppy_fruit_sdf(float2 p) {
-    // Narrow horizontally to get the taller-than-wide Fruit proportions
-    float ax = 1.45;
-    float2 q = float2(p.x * ax, p.y);
+float3 puppy_shade(float2 pos, constant PuppyUniforms &uniforms, texture2d<float> height_map) {
+    float2 uv = (pos - uniforms.body_origin_px) / uniforms.body_size_px;
+    float2 tx = 1.5 / uniforms.body_size_px;
+    float hx = puppy_height(height_map, uv + float2(tx.x, 0.0))
+             - puppy_height(height_map, uv - float2(tx.x, 0.0));
+    float hy = puppy_height(height_map, uv + float2(0.0, tx.y))
+             - puppy_height(height_map, uv - float2(0.0, tx.y));
 
-    // Body: two large circles for the main mass
-    float dl = length(q - float2(-0.20, -0.04)) - 0.50;
-    float dr = length(q - float2( 0.20, -0.04)) - 0.50;
-    float d = puppy_smin(dl, dr, 0.08);
+    // Relief depth as a fraction of the logo width; y flips to point up.
+    float relief = 0.32 * uniforms.body_size_px.x / 3.0;
+    float3 n = normalize(float3(-hx * relief, hy * relief, 1.0));
 
-    // Upper shoulder peaks so the top has two distinct bumps
-    float sl = length(q - float2(-0.24, 0.22)) - 0.28;
-    float sr = length(q - float2( 0.24, 0.22)) - 0.28;
-    d = puppy_smin(d, min(sl, sr), 0.03);
+    float t = uniforms.time;
+    float3 V = float3(0.0, 0.0, 1.0);
+    // Light orbits the logo in a full circle
+    float orbit = t * 0.35;
+    float3 L = normalize(float3(0.75 * cos(orbit), 0.75 * sin(orbit), 0.66));
 
-    // Top notch carved between the shoulders
-    float notch = length(q - float2(0.0, 0.54)) - 0.18;
-    d = max(d, -notch);
+    // Key light slowly cycles through hues; the white body takes on its colour
+    float hue = t * 0.04;
+    float3 light_color = mix(float3(1.0), 0.5 + 0.5 * cos(6.2832 * (hue + float3(0.0, 0.33, 0.67))), 0.85);
+    // Weaker global light, a similar or complementary hue (picked at random per layer)
+    float3 fill_color = 0.5 + 0.5 * cos(6.2832 * (hue + uniforms.fill_hue_offset + float3(0.0, 0.33, 0.67)));
 
-    // Bottom cleft
-    float bdip = length(q - float2(0.0, -0.60)) - 0.06;
-    d = max(d, -bdip);
+    // Lacquer painted the light's colour, so the hue reads strongly on both lit and shadow sides
+    float diff = max(dot(n, L), 0.0);
+    float3 color = light_color * light_color * (0.12 + 0.88 * diff);
+    // Global light wraps the whole object, a bit stronger on the side away from the key
+    float3 fill_dir = normalize(float3(-L.xy, 0.6));
+    color += fill_color * (0.08 + 0.14 * max(dot(n, fill_dir), 0.0));
 
-    // Convert body SDF to p-space
-    d /= ax;
+    // Clear coat: mirror a studio (sky over a dark room) off the surface
+    float3 R = reflect(-V, n);
+    // Bright side of the room faces the orbiting light, so no reflection stays fixed
+    float3 env = mix(float3(0.02, 0.02, 0.03), float3(0.55, 0.62, 0.75),
+                     smoothstep(-0.3, 1.0, dot(R.xy, normalize(L.xy))));
+    // Round lamps far away, mirrored off the surface; the key sits along L so it matches the shading
+    env += 14.0 * light_color * puppy_lamp(R.xy, L.xy, 0.32);
+    env += 5.5 * fill_color * puppy_lamp(R.xy, -L.xy * float2(1.0, 0.9), 0.12);
+    // Soft horizon: a hard step here drew a band along the outline where the tilt passes 45°
+    env *= smoothstep(-0.6, 0.6, R.z) * 0.85 + 0.15;
 
-    // Bite (computed in p-space so it stays circular)
-    float bite = length(p - float2(0.44, 0.04)) - 0.155;
-    d = max(d, -bite);
+    float fresnel = 0.06 + 0.94 * pow(1.0 - clamp(n.z, 0.0, 1.0), 5.0);
+    color = color * (1.0 - fresnel) + env * fresnel;
 
-    // Leaf (rotated ellipse in p-space)
-    float2 lp = p - float2(0.04, 0.38);
-    float la = -0.45;
-    float ca = cos(la);
-    float sa = sin(la);
-    float2 rp = float2(lp.x * ca - lp.y * sa, lp.x * sa + lp.y * ca);
-    float2 radii = float2(0.05, 0.12);
-    float leaf = length(rp / radii) - 1.0;
-    leaf *= min(radii.x, radii.y);
-    d = min(d, leaf);
-
-    return d;
+    return clamp(color, 0.0, 1.0);
 }
 
 fragment float4 fragment_shader_puppy(
     VertexOut in [[stage_in]],
-    constant PuppyUniforms &uniforms [[buffer(0)]]) {
-
-    float2 uv = (in.position.xy * 2.0 - uniforms.resolution) /
-                 min(uniforms.resolution.x, uniforms.resolution.y);
-    uv.y = -uv.y;
-    uv.y += 0.06;
-
-    float t = uniforms.time;
-    float3 color = float3(0.0);
-    float minRes = min(uniforms.resolution.x, uniforms.resolution.y);
-
-    const int numLayers = 16;
-    const float scaleRatio = 1.28;
-    const float baseScale = 0.06;
-
-    float animPhase = fract(t * 0.25);
-
-    for (int i = numLayers - 1; i >= 0; i--) {
-        float fi = float(i) + animPhase;
-        float scale = baseScale * pow(scaleRatio, fi);
-
-        if (scale > 5.0 || scale < 0.005) continue;
-
-        float2 p = uv / scale;
-        float d = puppy_fruit_sdf(p);
-
-        float aa = 1.5 / (scale * minRes * 0.5);
-        float inside = 1.0 - smoothstep(-aa, aa, d);
-
-        float edgeDist = abs(d) * scale;
-        float edge = exp(-edgeDist * edgeDist * 600.0);
-
-        float depth = clamp(fi / float(numLayers), 0.0, 1.0);
-
-        float hue = 0.58 + fi * 0.018 + t * 0.015;
-        float sat = 0.7 + 0.3 * depth;
-
-        // Smooth cosine blend replaces the hard i%2 switch so
-        // the bright/dark alternation travels with the zoom
-        float blend = 0.5 + 0.5 * cos(fi * 3.14159);
-        float val = 0.4 + 0.5 * depth;
-        float3 brightColor = puppy_hsv2rgb(float3(hue, sat, val));
-        float3 darkColor = float3(0.01, 0.012, 0.035);
-        float3 layerColor = mix(darkColor, brightColor, blend);
-
-        float3 edgeColor = puppy_hsv2rgb(float3(hue, 0.5, 1.0));
-
-        // Wider fade-in so the innermost layer enters at near-zero opacity
-        float opacity = smoothstep(0.05, 0.12, scale) * smoothstep(5.0, 2.5, scale);
-
-        color = mix(color, layerColor, inside * opacity);
-        color += edgeColor * edge * opacity * 0.35;
-    }
-
-    // Vignette
-    float vignette = 1.0 - smoothstep(0.6, 2.0, length(uv));
-    color *= mix(0.35, 1.0, vignette);
-
-    color = clamp(color, 0.0, 1.0);
-    return float4(color, 1.0);
+    constant PuppyUniforms &uniforms [[buffer(0)]],
+    texture2d<float> height_map [[texture(0)]]) {
+    // 4x rotated-grid supersampling: the HDR reflections flip on within a pixel
+    // and alias badly; each sample is clamped before averaging so they resolve smoothly.
+    float3 color = puppy_shade(in.position.xy + float2(-0.125, -0.375), uniforms, height_map)
+                 + puppy_shade(in.position.xy + float2( 0.375, -0.125), uniforms, height_map)
+                 + puppy_shade(in.position.xy + float2( 0.125,  0.375), uniforms, height_map)
+                 + puppy_shade(in.position.xy + float2(-0.375,  0.125), uniforms, height_map);
+    return float4(color * 0.25, 1.0);
 }
 """
 
 private struct MetalPuppyFragmentUniforms {
-  var resolution: SIMD2<Float>
+  // swiftlint:disable identifier_name
+  var body_origin_px: SIMD2<Float>
+  var body_size_px: SIMD2<Float>
+  // swiftlint:enable identifier_name
   var time: Float
+  var fillHueOffset: Float
 }
 
 final class PuppyLayer: CAMetalLayer, Background {
@@ -159,13 +125,19 @@ final class PuppyLayer: CAMetalLayer, Background {
   private var commandQueue: MTLCommandQueue?
   private var pipelineState: MTLRenderPipelineState?
   private var vertexBuffer: MTLBuffer?
+  private var heightTexture: MTLTexture?
+  /// Logo rect (points) the height texture was baked for; rebaked when it changes.
+  private var bakedRect = CGRect.null
 
   // MARK: - Animation
   private var totalElapsedTime: CGFloat = 0
   private var lastUpdateTime: CGFloat = 0
   private let minUpdateInterval: CGFloat = 1.0 / 30.0
+  /// Global light hue relative to the key: a near neighbour or the complement, chosen per layer.
+  private let fillHueOffset: Float = Bool.random() ? Float.random(in: -0.08...0.08) : 0.5
 
   deinit {
+    heightTexture = nil
     vertexBuffer = nil
     pipelineState = nil
     commandQueue = nil
@@ -239,6 +211,182 @@ final class PuppyLayer: CAMetalLayer, Background {
     )
   }
 
+  /// Rasterises the fruit and leaf vector paths into the two height channels the
+  /// shader reads: R = bevel ramp from an exact distance transform (so the round-over
+  /// starts right on the outline), G = wide blur for the crown.
+  private func bakeHeightTexture(rect: CGRect, fruit: Fruit, leaf: Leaf) {
+    bakedRect = rect
+    heightTexture = nil
+    let cs = contentsScale
+    let width = Int(rect.width * cs)
+    let height = Int(rect.height * cs)
+    // Baked at 2x and averaged down so the bevel isn't built on the mask's pixel staircase.
+    let ss = 2
+    let bigW = width * ss, bigH = height * ss
+    let bigScale = cs * CGFloat(ss)
+    guard let device = metalDevice, width > 0, height > 0,
+          let context = CGContext(
+            data: nil, width: bigW, height: bigH, bitsPerComponent: 8, bytesPerRow: 0,
+            space: CGColorSpaceCreateDeviceGray(), bitmapInfo: CGImageAlphaInfo.none.rawValue
+          ) else { return }
+    // CGContext memory already starts at the top row, matching Metal's texture rows.
+    context.scaleBy(x: bigScale, y: bigScale)
+    context.translateBy(x: -rect.minX, y: -rect.minY)
+    context.setFillColor(gray: 1, alpha: 1)
+    context.addPath(fruit.transformedPath.quartzPath)
+    context.addPath(leaf.transformedPath.quartzPath)
+    context.fillPath()
+    guard let maskData = context.data else { return }
+
+    let logoWidth = Float(fruit.transformedPath.bounds.width * bigScale)
+    let maskBytes = maskData.bindMemory(to: UInt8.self, capacity: context.bytesPerRow * bigH)
+    var ramp = [Float](repeating: 0, count: bigW * bigH)
+    var crown = [Float](repeating: 0, count: bigW * bigH)
+    for y in 0..<bigH {
+      for x in 0..<bigW where maskBytes[y * context.bytesPerRow + x] > 127 {
+        ramp[y * bigW + x] = 1e20
+        crown[y * bigW + x] = 1
+      }
+    }
+    PuppyLayer.squaredDistanceTransform(&ramp, width: bigW, height: bigH)
+    let bevelPx = logoWidth * 0.16
+    for index in ramp.indices {
+      ramp[index] = min(max(ramp[index].squareRoot() - 0.5, 0) / bevelPx, 1)
+    }
+    // Exact float blurs: Core Image's large Gaussian approximates and striped the face.
+    PuppyLayer.gaussianBlur(&ramp, width: bigW, height: bigH, sigma: logoWidth * 0.008)
+
+    // Wide dome for the body only, so its centre isn't flat. Re-fill the mask with just the leaf.
+    context.clear(CGRect(x: rect.minX, y: rect.minY, width: rect.width, height: rect.height))
+    context.addPath(leaf.transformedPath.quartzPath)
+    context.fillPath()
+    var dome = [Float](repeating: 0, count: bigW * bigH)
+    var leafDistance = [Float](repeating: 1e20, count: bigW * bigH)
+    for y in 0..<bigH {
+      for x in 0..<bigW {
+        let index = y * bigW + x
+        if maskBytes[y * context.bytesPerRow + x] > 127 {
+          leafDistance[index] = 0
+        } else {
+          dome[index] = crown[index]
+        }
+      }
+    }
+    PuppyLayer.squaredDistanceTransform(&leafDistance, width: bigW, height: bigH)
+    PuppyLayer.gaussianBlur(&dome, width: bigW, height: bigH, sigma: logoWidth * 0.35)
+    PuppyLayer.gaussianBlur(&crown, width: bigW, height: bigH, sigma: logoWidth * 0.16)
+    let domePeak = max(dome.max() ?? 1, 1e-6)
+    let leafFade = logoWidth * 0.03
+    for index in crown.indices {
+      // Zero on the leaf (plus the 2 texels the shader's normals sample), full strength across the gap.
+      let weight = min(max(leafDistance[index].squareRoot() - Float(ss * 3), 0) / leafFade, 1)
+      crown[index] += 0.8 * weight * dome[index] / domePeak
+      leafDistance[index] = 1 - weight  // now "leafness", 1 on the leaf
+    }
+
+    // R = bevel ramp, G = crown, B = leafness, each the average of its 2x2 block.
+    var packed = [Float](repeating: 0, count: width * height * 4)
+    let area = Float(ss * ss)
+    for y in 0..<height {
+      for x in 0..<width {
+        var rSum: Float = 0, gSum: Float = 0, bSum: Float = 0
+        for dy in 0..<ss {
+          for dx in 0..<ss {
+            let index = (y * ss + dy) * bigW + x * ss + dx
+            rSum += ramp[index]
+            gSum += crown[index]
+            bSum += leafDistance[index]
+          }
+        }
+        packed[(y * width + x) * 4] = rSum / area
+        packed[(y * width + x) * 4 + 1] = gSum / area
+        packed[(y * width + x) * 4 + 2] = bSum / area
+      }
+    }
+
+    // 32-bit float: 8-bit or half-float heights stair-step the mirrored highlights.
+    let descriptor = MTLTextureDescriptor.texture2DDescriptor(
+      pixelFormat: .rgba32Float, width: width, height: height, mipmapped: false
+    )
+    descriptor.usage = [.shaderRead]
+    guard let texture = device.makeTexture(descriptor: descriptor) else { return }
+    packed.withUnsafeBytes { bytes in
+      texture.replace(
+        region: MTLRegionMake2D(0, 0, width, height), mipmapLevel: 0,
+        withBytes: bytes.baseAddress!, bytesPerRow: width * 4 * MemoryLayout<Float>.stride
+      )
+    }
+    heightTexture = texture
+  }
+
+  /// Gaussian approximated by three box blurs per axis (running sums, zero outside).
+  private static func gaussianBlur(_ grid: inout [Float], width: Int, height: Int, sigma: Float) {
+    // 6 box passes: 3 left curvature kinks the glossy shading showed as straight lines.
+    let passes = 6
+    let radius = Int((((1 + 12 * sigma * sigma / Float(passes)).squareRoot()) - 1) / 2 + 0.5)
+    guard radius > 0 else { return }
+    // All passes run in a padded line so the spill past the edge is kept; cropping it
+    // between passes left straight creases. Exact, since rows outside the grid are empty.
+    let pad = passes * radius
+    let norm = 1 / Double(2 * radius + 1)
+    var src = [Double](repeating: 0, count: max(width, height) + 2 * pad)
+    var dst = src
+    func blurLine(start: Int, step: Int, count: Int) {
+      let total = count + 2 * pad
+      for q in 0..<total { src[q] = 0 }
+      for q in 0..<count { src[pad + q] = Double(grid[start + q * step]) }
+      for _ in 0..<passes {
+        var sum: Double = 0
+        for q in 0..<radius { sum += src[q] }
+        for q in 0..<total {
+          if q + radius < total { sum += src[q + radius] }
+          dst[q] = sum * norm
+          if q >= radius { sum -= src[q - radius] }
+        }
+        swap(&src, &dst)
+      }
+      for q in 0..<count { grid[start + q * step] = Float(src[pad + q]) }
+    }
+    for y in 0..<height { blurLine(start: y * width, step: 1, count: width) }
+    for x in 0..<width { blurLine(start: x, step: width, count: height) }
+  }
+
+  /// Felzenszwalb–Huttenlocher squared Euclidean distance transform, in place.
+  /// Input: 0 at outside pixels, a huge value inside. Rows first, then columns.
+  private static func squaredDistanceTransform(_ grid: inout [Float], width: Int, height: Int) {
+    let longest = max(width, height)
+    var sites = [Int](repeating: 0, count: longest)
+    var breaks = [Float](repeating: 0, count: longest + 1)
+    var line = [Float](repeating: 0, count: longest)
+    func pass(start: Int, step: Int, count: Int) {
+      for q in 0..<count { line[q] = grid[start + q * step] }
+      var k = 0
+      sites[0] = 0
+      breaks[0] = -.infinity
+      breaks[1] = .infinity
+      for q in 1..<count {
+        var s: Float
+        repeat {
+          let p = sites[k]
+          s = ((line[q] + Float(q * q)) - (line[p] + Float(p * p))) / Float(2 * (q - p))
+          k -= 1
+        } while s <= breaks[k + 1]
+        k += 2
+        sites[k] = q
+        breaks[k] = s
+        breaks[k + 1] = .infinity
+      }
+      k = 0
+      for q in 0..<count {
+        while breaks[k + 1] < Float(q) { k += 1 }
+        let p = sites[k]
+        grid[start + q * step] = Float((q - p) * (q - p)) + line[p]
+      }
+    }
+    for y in 0..<height { pass(start: y * width, step: 1, count: width) }
+    for x in 0..<width { pass(start: x, step: width, count: height) }
+  }
+
   private weak var currentFruit: Fruit?
   private weak var currentLeaf: Leaf?
 
@@ -271,12 +419,23 @@ final class PuppyLayer: CAMetalLayer, Background {
     guard let pipelineState = pipelineState,
           let commandQueue = commandQueue,
           let vertexBuffer = vertexBuffer,
+          let fruit = currentFruit,
+          let leaf = currentLeaf,
           let drawable = nextDrawable() else { return }
     let texture = drawable.texture
 
+    // The paths are re-transformed after layout, so check here rather than in update(frame:).
+    let rect = fruit.bounds(including: leaf).insetBy(dx: -4, dy: -4)
+    if rect != bakedRect {
+      bakeHeightTexture(rect: rect, fruit: fruit, leaf: leaf)
+    }
+
+    let cs = contentsScale
     var uniforms = MetalPuppyFragmentUniforms(
-      resolution: SIMD2<Float>(Float(texture.width), Float(texture.height)),
-      time: Float(totalElapsedTime)
+      body_origin_px: SIMD2<Float>(Float(rect.minX * cs), Float((bounds.height - rect.maxY) * cs)),
+      body_size_px: SIMD2<Float>(Float(rect.width * cs), Float(rect.height * cs)),
+      time: Float(totalElapsedTime),
+      fillHueOffset: fillHueOffset
     )
 
     let renderPassDescriptor = MTLRenderPassDescriptor()
@@ -293,31 +452,27 @@ final class PuppyLayer: CAMetalLayer, Background {
       return
     }
 
-    renderEncoder.setRenderPipelineState(pipelineState)
-    if let fruit = currentFruit, let leaf = currentLeaf {
-      let body = fruit.bounds(including: leaf)
-      let fb = CGRect(x: body.minX - 4, y: body.minY - 4,
-                       width: body.width + 8, height: body.height + 8)
-      let cs = contentsScale
-      let sx = max(0, Int(fb.minX * cs))
-      let sy = max(0, Int((bounds.height - fb.maxY) * cs))
-      let sw = min(Int(fb.width * cs), texture.width - sx)
-      let sh = min(Int(fb.height * cs), texture.height - sy)
+    if let heightTexture = heightTexture {
+      renderEncoder.setRenderPipelineState(pipelineState)
+      let sx = max(0, Int(rect.minX * cs))
+      let sy = max(0, Int((bounds.height - rect.maxY) * cs))
+      let sw = min(Int(rect.width * cs), texture.width - sx)
+      let sh = min(Int(rect.height * cs), texture.height - sy)
       if sw > 0 && sh > 0 {
         renderEncoder.setScissorRect(MTLScissorRect(x: sx, y: sy, width: sw, height: sh))
       }
+      renderEncoder.setVertexBuffer(vertexBuffer, offset: 0, index: 0)
+      renderEncoder.setFragmentBytes(
+        &uniforms,
+        length: MemoryLayout<MetalPuppyFragmentUniforms>.stride,
+        index: 0
+      )
+      renderEncoder.setFragmentTexture(heightTexture, index: 0)
+      renderEncoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6)
     }
-    renderEncoder.setVertexBuffer(vertexBuffer, offset: 0, index: 0)
-    renderEncoder.setFragmentBytes(
-      &uniforms,
-      length: MemoryLayout<MetalPuppyFragmentUniforms>.stride,
-      index: 0
-    )
-    renderEncoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6)
 
     renderEncoder.endEncoding()
     commandBuffer.present(drawable)
     commandBuffer.commit()
   }
 }
-// swiftlint:enable file_length
