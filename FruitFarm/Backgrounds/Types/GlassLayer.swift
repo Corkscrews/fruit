@@ -53,7 +53,10 @@ float3 glass_backdrop(float2 p, float t) {
 
     float3 color = mix(float3(1.0, 0.92, 0.22), float3(1.0, 0.76, 0.10),
                        0.5 + 0.5 * sin(f * 1.7 + w.y * 1.3));
-    float x = fract(f * 2.1) * 4.5;  // fringe spans x in 0..1, the rest stays warm
+    // Each period gets its own fringe width (x in 0..1 is the fringe, the rest is plain).
+    // Seamless: x is 0 at a period's start and past 1 at its end, both outside the band.
+    float period = floor(f * 2.1);
+    float x = fract(f * 2.1) * mix(1.6, 9.0, fract(sin(period * 12.9898) * 43758.5453));
     float3 fringe = mix(float3(1.0, 0.10, 0.62), float3(0.22, 0.28, 1.0), smoothstep(0.20, 0.45, x));
     fringe = mix(fringe, float3(0.15, 0.92, 1.0), smoothstep(0.42, 0.62, x));
     fringe = mix(fringe, float3(1.0, 1.0, 0.72), smoothstep(0.62, 0.85, x));
@@ -113,7 +116,12 @@ float3 glass_shade(float2 pos, constant GlassUniforms &uniforms, texture2d<float
     float fresnel = 0.04 + 0.96 * pow(1.0 - clamp(n.z, 0.0, 1.0), 5.0);
     color = color * (1.0 - fresnel) + env * fresnel;
     // Thin bright line just inside the outline: light trapped in the edge by internal reflection.
-    color += float3(0.9, 0.95, 1.0) * smoothstep(0.30, 0.18, n.z) * smoothstep(0.02, 0.12, n.z) * 0.8;
+    // Measured in pixels from the outline (R is distance / bevel width, bevel = 0.16 of the logo),
+    // so the leaf, whose edge turns steep within a pixel, gets the same line as the body.
+    constexpr sampler rs(filter::linear, address::clamp_to_edge);
+    float edge_px = height_map.sample(rs, uv).r * 0.16 * uniforms.body_size_px.x;
+    float rim = smoothstep(0.2, 0.9, edge_px) * (1.0 - smoothstep(1.3, 2.4, edge_px));
+    color += float3(0.9, 0.95, 1.0) * rim * 1.8;
     return clamp(color, 0.0, 1.0);
 }
 
