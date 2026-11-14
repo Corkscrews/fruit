@@ -1,4 +1,3 @@
-// swiftlint:disable file_length
 import Cocoa
 import QuartzCore
 import Foundation
@@ -24,151 +23,121 @@ vertex VertexOut vertex_shader_glass(
 }
 
 struct GlassUniforms {
-    float2 resolution;
-    float2 body_center_px;
-    float2 body_half_px;
+    float2 body_origin_px;
+    float2 body_size_px;
     float time;
-    float color_phase;
-    float zoom_factor;
 };
 
-float glass_hash(float2 p) {
-    return fract(sin(dot(p, float2(127.1, 311.7))) * 43758.5453123);
+// Same slab profile as PuppyLayer: R = bevel ramp, G = crown, B = leafness.
+float glass_height(texture2d<float> tex, float2 uv) {
+    constexpr sampler s(filter::linear, address::clamp_to_edge);
+    float3 b = tex.sample(s, uv).rgb;
+    float k = 1.0 - clamp(b.r, 0.0, 1.0);
+    float bevel = sqrt(1.0 - k * k * mix(k, 1.0, b.b));
+    return 0.55 * bevel + 0.45 * b.g;
 }
 
-float glass_noise(float2 p) {
-    float2 i = floor(p);
-    float2 f = fract(p);
-    float2 u = f * f * (3.0 - 2.0 * f);
-    float a = glass_hash(i);
-    float b = glass_hash(i + float2(1.0, 0.0));
-    float c = glass_hash(i + float2(0.0, 1.0));
-    float d = glass_hash(i + float2(1.0, 1.0));
-    return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
+// Rotates a colour's hue by `a` radians around the grey axis (Rodrigues).
+float3 glass_hue_rotate(float3 c, float a) {
+    float3 k = float3(0.57735);
+    return c * cos(a) + cross(k, c) * sin(a) + k * dot(k, c) * (1.0 - cos(a));
 }
 
-float glass_fbm(float2 p) {
-    float v = 0.0;
-    float amp = 0.5;
-    for (int i = 0; i < 4; i++) {
-        v += amp * glass_noise(p);
-        p = float2(p.x * 1.82 + p.y * 0.44,
-                   p.y * 1.76 - p.x * 0.39) + 13.0;
-        amp *= 0.52;
+// What sits behind the glass: a polarised-light (photoelastic) sheet with narrow
+// fringes. Its hue travels over time and across the logo so no colour settles.
+float3 glass_backdrop(float2 p, float t) {
+    float2 w = p * 1.6;
+    w += 0.55 * float2(sin(w.y * 1.5 + t * 0.21), cos(w.x * 1.2 - t * 0.17));
+    w += 0.30 * float2(sin(w.y * 2.9 - t * 0.13 + 1.3), cos(w.x * 2.5 + t * 0.19 + 0.7));
+    float f = w.x * 0.8 + w.y * 0.55 + 0.8 * sin(w.x * 1.1 - w.y * 0.7 + t * 0.1) + t * 0.03;
+
+    float3 color = mix(float3(1.0, 0.92, 0.22), float3(1.0, 0.76, 0.10),
+                       0.5 + 0.5 * sin(f * 1.7 + w.y * 1.3));
+    float x = fract(f * 2.1) * 4.5;  // fringe spans x in 0..1, the rest stays warm
+    float3 fringe = mix(float3(1.0, 0.10, 0.62), float3(0.22, 0.28, 1.0), smoothstep(0.20, 0.45, x));
+    fringe = mix(fringe, float3(0.15, 0.92, 1.0), smoothstep(0.42, 0.62, x));
+    fringe = mix(fringe, float3(1.0, 1.0, 0.72), smoothstep(0.62, 0.85, x));
+    float band = smoothstep(0.0, 0.16, x) * (1.0 - smoothstep(0.84, 1.0, x));
+    color = mix(color, fringe, band);
+    // About half the hue wheel across the logo at once, a full turn every ~40 s.
+    float hue = t * 0.025 + 0.28 * sin(w.x * 0.55 + w.y * 0.4 + t * 0.07);
+    return clamp(glass_hue_rotate(color, 6.2832 * hue), 0.0, 1.0);
+}
+
+// Distant round lamp, as in PuppyLayer: a soft disc with a wide glow around it.
+float glass_lamp(float2 q, float2 center, float radius) {
+    float d = length(q - center) / radius;
+    return 1.0 - smoothstep(0.0, 1.0, d) + 0.25 * exp(-d * d * 0.8);
+}
+
+float3 glass_shade(float2 pos, constant GlassUniforms &uniforms, texture2d<float> height_map) {
+    float2 uv = (pos - uniforms.body_origin_px) / uniforms.body_size_px;
+    float2 tx = 1.5 / uniforms.body_size_px;
+    float hx = glass_height(height_map, uv + float2(tx.x, 0.0))
+             - glass_height(height_map, uv - float2(tx.x, 0.0));
+    float hy = glass_height(height_map, uv + float2(0.0, tx.y))
+             - glass_height(height_map, uv - float2(0.0, tx.y));
+    float relief = 0.32 * uniforms.body_size_px.x / 3.0;
+    // y flips to point up.
+    float3 n = normalize(float3(-hx * relief, hy * relief, 1.0));
+    float thickness = 0.25 + glass_height(height_map, uv);
+
+    float t = uniforms.time;
+    // Isotropic logo-relative coordinates, y down like the framebuffer.
+    float2 p = (uv - 0.5) * uniforms.body_size_px / uniforms.body_size_px.x * 2.0;
+
+    // Refraction: each colour bends by its own index (spread exaggerated so the
+    // fringes show at logo size), then travels through the slab to the backdrop.
+    float3 iors = float3(1.40, 1.48, 1.57);
+    float3 color;
+    for (int c = 0; c < 3; c++) {
+        float3 r = refract(float3(0.0, 0.0, -1.0), n, 1.0 / iors[c]);
+        float2 shift = float2(r.x, -r.y) / max(-r.z, 0.25) * thickness * 1.5;
+        color[c] = glass_backdrop(p + shift, t)[c];
     }
-    return v;
-}
+    // Steep walls throw the view sideways into the dark room: the dark outline of real glass.
+    float wall = 1.0 - smoothstep(0.25, 0.85, n.z);
+    color *= mix(1.0, 0.12, wall);
+    // Thick glass looks slightly milky and cool, so the backdrop reads as behind something.
+    color = mix(color, float3(0.92, 0.96, 1.0), 0.12) * float3(0.98, 0.98, 1.0);
 
-// Anisotropic gaussian bloom in apple-relative space.
-float glass_bloom(float2 lp, float2 center, float2 axes, float falloff) {
-    float2 d = (lp - center) / max(axes, float2(0.001));
-    return exp(-falloff * dot(d, d));
+    // Surface reflection of a dim room with two softboxes that sway slowly.
+    float3 R = reflect(float3(0.0, 0.0, -1.0), n);
+    float2 sway = float2(0.10 * sin(t * 0.33), 0.06 * cos(t * 0.27));
+    float3 env = mix(float3(0.03, 0.03, 0.04), float3(0.75, 0.80, 0.90),
+                     smoothstep(-0.4, 1.0, R.y));
+    env += 12.0 * glass_lamp(R.xy, float2(-0.38, 0.46) + sway, 0.26);
+    env += float3(5.0, 5.5, 6.5) * glass_lamp(R.xy, float2(0.60, -0.42) - sway, 0.10);
+    env *= smoothstep(-0.6, 0.6, R.z) * 0.85 + 0.15;
+
+    float fresnel = 0.04 + 0.96 * pow(1.0 - clamp(n.z, 0.0, 1.0), 5.0);
+    color = color * (1.0 - fresnel) + env * fresnel;
+    // Thin bright line just inside the outline: light trapped in the edge by internal reflection.
+    color += float3(0.9, 0.95, 1.0) * smoothstep(0.30, 0.18, n.z) * smoothstep(0.02, 0.12, n.z) * 0.8;
+    return clamp(color, 0.0, 1.0);
 }
 
 fragment float4 fragment_shader_glass(
     VertexOut in [[stage_in]],
-    constant GlassUniforms &uniforms [[buffer(0)]]) {
-
-    // Apple-relative coordinates: roughly [-1, 1] across the fruit body.
-    // lp.y > 0 is the lower half of the fruit (Metal y-down).
-    float2 half_px = max(uniforms.body_half_px, float2(1.0));
-    float zoom = max(uniforms.zoom_factor, 0.001);
-    float2 lp = ((in.position.xy - uniforms.body_center_px) / half_px) / zoom;
-
-    float loop = fract(uniforms.time / 36.0);
-    float a = loop * 6.28318530718;
-
-    float2 skew = float2(
-        lp.x + 0.22 * lp.y + 0.10 * sin(lp.y * 4.0 + cos(a) * 1.2),
-        lp.y - 0.15 * lp.x + 0.08 * sin(lp.x * 5.0 + sin(a) * 1.4)
-    );
-    float2 bend = float2(
-        skew.x + 0.18 * sin(skew.y * 3.4 + sin(a)),
-        skew.y + 0.14 * sin(skew.x * 4.2 + cos(a))
-    );
-
-    float edgeShape = max(abs(bend.x * 0.82 + 0.08 * sin(bend.y * 6.0)),
-                          abs(bend.y * 0.92 - 0.10 * sin(bend.x * 5.0)));
-    float edgeWeight = smoothstep(0.52, 1.08, edgeShape);
-    float rim = smoothstep(0.72, 1.02, edgeShape) * (1.0 - smoothstep(1.02, 1.26, edgeShape));
-
-    float2 chromaOffset = bend * (0.08 + edgeWeight * 0.16 + rim * 0.10);
-    float2 bendR = bend + chromaOffset;
-    float2 bendG = bend;
-    float2 bendB = bend - chromaOffset;
-    float3 channelX = float3(bendR.x, bendG.x, bendB.x);
-    float3 channelY = float3(bendR.y, bendG.y, bendB.y);
-
-    float3 channelEdgeShape = max(abs(channelX * 0.82 + 0.08 * sin(channelY * 6.0)),
-                                  abs(channelY * 0.92 - 0.10 * sin(channelX * 5.0)));
-    float3 channelEdgeWeight = smoothstep(float3(0.52), float3(1.08), channelEdgeShape);
-    float3 channelRim = smoothstep(float3(0.72), float3(1.02), channelEdgeShape)
-        * (float3(1.0) - smoothstep(float3(1.02), float3(1.26), channelEdgeShape));
-    float3 stressA = sin(channelX * 5.1 + channelY * 1.9 + sin(a) * 1.4);
-    float3 stressB = sin(channelY * 4.3 - channelX * 2.7 + cos(a * 2.0) * 1.1);
-    float3 stressC = sin((channelX + channelY * 0.6) * 7.2 + sin(a * 3.0) * 0.9);
-    float3 baseBand = exp(-pow((channelY - 0.72 - 0.08 * sin(channelX * 4.0 + sin(a))) * 4.0, float3(2.0)));
-    float3 retardance = float3(4.0)
-        + stressA * 2.0
-        + stressB * 1.7
-        + stressC * 0.9
-        + channelEdgeWeight * 8.5
-        + baseBand * 5.0
-        + sin(a) * 1.2;
-
-    float3 spectrum = 0.5 + 0.5 * cos(
-        retardance * float3(0.92, 1.19, 1.55) + float3(0.0, 2.1, 4.35)
-    );
-    spectrum = pow(clamp(spectrum, 0.0, 1.0), float3(0.48));
-
-    float3 baseGlass = float3(0.085, 0.075, 0.105);
-    float3 color = baseGlass + spectrum * (0.48 + channelEdgeWeight * 0.78);
-    color += spectrum * channelRim * 2.10;
-
-    float2 dRed = float2(0.10 * cos(a), 0.05 * sin(a * 2.0));
-    float2 dCyan = float2(0.06 * sin(a * 2.0 + 0.8), 0.10 * cos(a));
-    float2 dYellow = float2(0.12 * cos(a * 3.0 + 1.1), 0.05 * sin(a));
-    float2 dMagenta = float2(0.08 * sin(a + 2.4), 0.04 * cos(a * 3.0));
-    float2 dCyanTop = float2(0.05 * cos(a * 2.0 + 4.1), 0.07 * sin(a + 0.3));
-
-    float redCorner = glass_bloom(bend, float2(-0.92,  0.78) + dRed, float2(0.52, 0.36), 5.0);
-    float cyanCorner = glass_bloom(bend, float2( 0.88,  0.56) + dCyan, float2(0.42, 0.52), 5.2);
-    float yellowBase = glass_bloom(bend, float2(-0.02,  0.98) + dYellow, float2(0.82, 0.24), 4.2);
-    float magentaTop = glass_bloom(bend, float2( 0.35, -0.88) + dMagenta, float2(0.42, 0.24), 6.0);
-    float cyanTop = glass_bloom(bend, float2(-0.58, -0.72) + dCyanTop, float2(0.34, 0.26), 6.0);
-
-    float pulseRed = 0.85 + 0.25 * sin(a);
-    float pulseCyan = 0.85 + 0.25 * sin(a + 2.0);
-    float pulseYellow = 0.85 + 0.25 * sin(a + 4.0);
-
-    color += float3(1.00, 0.12, 0.03) * redCorner * 2.45 * pulseRed;
-    color += float3(0.00, 0.95, 1.00) * cyanCorner * 2.25 * pulseCyan;
-    color += float3(1.00, 0.90, 0.12) * yellowBase * 2.55 * pulseYellow;
-    color += float3(1.00, 0.12, 0.58) * magentaTop * 1.35 * pulseRed;
-    color += float3(0.08, 0.88, 1.00) * cyanTop * 1.30 * pulseCyan;
-
-    float stressRibbon = exp(-pow((bend.y - 0.16 + 0.16 * sin(bend.x * 3.0 + a)) * 3.0, 2.0));
-    color += spectrum * stressRibbon * 0.45;
-
-    color = pow(max(color, 0.0), float3(0.82));
-    color = mix(color, color / (1.0 + color * 0.22), smoothstep(float3(1.0), float3(1.8), color));
-    color = clamp(color, 0.0, 1.0);
-    return float4(color, 1.0);
+    constant GlassUniforms &uniforms [[buffer(0)]],
+    texture2d<float> height_map [[texture(0)]]) {
+    // 4x rotated-grid supersampling, as in PuppyLayer: the highlights alias otherwise.
+    float3 color = glass_shade(in.position.xy + float2(-0.125, -0.375), uniforms, height_map)
+                 + glass_shade(in.position.xy + float2( 0.375, -0.125), uniforms, height_map)
+                 + glass_shade(in.position.xy + float2( 0.125,  0.375), uniforms, height_map)
+                 + glass_shade(in.position.xy + float2(-0.375,  0.125), uniforms, height_map);
+    return float4(color * 0.25, 1.0);
 }
 """
 
 private struct MetalGlassFragmentUniforms {
-  var resolution: SIMD2<Float>
   // swiftlint:disable identifier_name
-  var body_center_px: SIMD2<Float>
-  var body_half_px: SIMD2<Float>
-  var time: Float
-  var color_phase: Float
-  var zoom_factor: Float
+  var body_origin_px: SIMD2<Float>
+  var body_size_px: SIMD2<Float>
   // swiftlint:enable identifier_name
+  var time: Float
 }
 
-// swiftlint:disable:next type_body_length
 final class GlassLayer: CAMetalLayer, Background {
 
   // MARK: - Metal Objects
@@ -176,23 +145,17 @@ final class GlassLayer: CAMetalLayer, Background {
   private var commandQueue: MTLCommandQueue?
   private var pipelineState: MTLRenderPipelineState?
   private var vertexBuffer: MTLBuffer?
+  private var heightTexture: MTLTexture?
+  /// Logo rect (points) the height texture was baked for; rebaked when it changes.
+  private var bakedRect = CGRect.null
 
   // MARK: - Animation
   private var totalElapsedTime: CGFloat = 0
-  private var colorPhase: CGFloat = 0
   private var lastUpdateTime: CGFloat = 0
   private let minUpdateInterval: CGFloat = 1.0 / 30.0
-  private var glassZoomFactor: CGFloat = 5.0
-
-  var zoomFactor: CGFloat {
-    get { glassZoomFactor }
-    set {
-      glassZoomFactor = max(0.001, newValue)
-      setNeedsDisplay()
-    }
-  }
 
   deinit {
+    heightTexture = nil
     vertexBuffer = nil
     pipelineState = nil
     commandQueue = nil
@@ -225,8 +188,6 @@ final class GlassLayer: CAMetalLayer, Background {
 
     // Only copy plain Swift state; presentation copies cannot touch Metal layer state safely.
     self.totalElapsedTime = other.totalElapsedTime
-    self.colorPhase = other.colorPhase
-    self.glassZoomFactor = other.glassZoomFactor
   }
 
   private func setupMetal() {
@@ -289,7 +250,6 @@ final class GlassLayer: CAMetalLayer, Background {
 
   func update(deltaTime: CGFloat) {
     totalElapsedTime += deltaTime
-    colorPhase = (totalElapsedTime * 0.08).truncatingRemainder(dividingBy: 1.0)
     lastUpdateTime += deltaTime
 
     if lastUpdateTime >= minUpdateInterval {
@@ -303,37 +263,25 @@ final class GlassLayer: CAMetalLayer, Background {
     guard let pipelineState = pipelineState,
           let commandQueue = commandQueue,
           let vertexBuffer = vertexBuffer,
+          let fruit = currentFruit,
+          let leaf = currentLeaf,
           let drawable = nextDrawable() else { return }
     let texture = drawable.texture
 
-    let cs = contentsScale
-    var bodyCenterPx = SIMD2<Float>(
-      Float(texture.width) * 0.5,
-      Float(texture.height) * 0.5
-    )
-    var bodyHalfPx = SIMD2<Float>(
-      Float(texture.width) * 0.25,
-      Float(texture.height) * 0.25
-    )
-    if let fruit = currentFruit, let leaf = currentLeaf {
-      let body = fruit.bounds(including: leaf)
-      let centerX = body.midX * cs
-      // Convert NSRect (origin bottom-left) to Metal pixel coords (origin top-left).
-      let centerY = (bounds.height - body.midY) * cs
-      bodyCenterPx = SIMD2<Float>(Float(centerX), Float(centerY))
-      bodyHalfPx = SIMD2<Float>(
-        Float((body.width * 0.5) * cs),
-        Float((body.height * 0.5) * cs)
+    // The paths are re-transformed after layout, so check here rather than in update(frame:).
+    let rect = fruit.bounds(including: leaf).insetBy(dx: -4, dy: -4)
+    if rect != bakedRect {
+      bakedRect = rect
+      heightTexture = PuppyLayer.bakeHeightTexture(
+        device: metalDevice, rect: rect, contentsScale: contentsScale, fruit: fruit, leaf: leaf
       )
     }
 
+    let cs = contentsScale
     var uniforms = MetalGlassFragmentUniforms(
-      resolution: SIMD2<Float>(Float(texture.width), Float(texture.height)),
-      body_center_px: bodyCenterPx,
-      body_half_px: bodyHalfPx,
-      time: Float(totalElapsedTime),
-      color_phase: Float(colorPhase),
-      zoom_factor: Float(glassZoomFactor)
+      body_origin_px: SIMD2<Float>(Float(rect.minX * cs), Float((bounds.height - rect.maxY) * cs)),
+      body_size_px: SIMD2<Float>(Float(rect.width * cs), Float(rect.height * cs)),
+      time: Float(totalElapsedTime)
     )
 
     let renderPassDescriptor = MTLRenderPassDescriptor()
@@ -350,31 +298,27 @@ final class GlassLayer: CAMetalLayer, Background {
       return
     }
 
-    renderEncoder.setRenderPipelineState(pipelineState)
-    if let fruit = currentFruit, let leaf = currentLeaf {
-      let body = fruit.bounds(including: leaf)
-      let fb = CGRect(x: body.minX - 4, y: body.minY - 4,
-                       width: body.width + 8, height: body.height + 8)
-      let cs = contentsScale
-      let sx = max(0, Int(fb.minX * cs))
-      let sy = max(0, Int((bounds.height - fb.maxY) * cs))
-      let sw = min(Int(fb.width * cs), texture.width - sx)
-      let sh = min(Int(fb.height * cs), texture.height - sy)
+    if let heightTexture = heightTexture {
+      renderEncoder.setRenderPipelineState(pipelineState)
+      let sx = max(0, Int(rect.minX * cs))
+      let sy = max(0, Int((bounds.height - rect.maxY) * cs))
+      let sw = min(Int(rect.width * cs), texture.width - sx)
+      let sh = min(Int(rect.height * cs), texture.height - sy)
       if sw > 0 && sh > 0 {
         renderEncoder.setScissorRect(MTLScissorRect(x: sx, y: sy, width: sw, height: sh))
       }
+      renderEncoder.setVertexBuffer(vertexBuffer, offset: 0, index: 0)
+      renderEncoder.setFragmentBytes(
+        &uniforms,
+        length: MemoryLayout<MetalGlassFragmentUniforms>.stride,
+        index: 0
+      )
+      renderEncoder.setFragmentTexture(heightTexture, index: 0)
+      renderEncoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6)
     }
-    renderEncoder.setVertexBuffer(vertexBuffer, offset: 0, index: 0)
-    renderEncoder.setFragmentBytes(
-      &uniforms,
-      length: MemoryLayout<MetalGlassFragmentUniforms>.stride,
-      index: 0
-    )
-    renderEncoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6)
 
     renderEncoder.endEncoding()
     commandBuffer.present(drawable)
     commandBuffer.commit()
   }
 }
-// swiftlint:enable file_length

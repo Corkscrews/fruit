@@ -26,7 +26,6 @@ struct PuppyUniforms {
     float2 body_origin_px;
     float2 body_size_px;
     float time;
-    float fill_hue_offset;
 };
 
 // Height of the logo slab. R = distance inward from the outline as a 0..1 ramp
@@ -68,15 +67,13 @@ float3 puppy_shade(float2 pos, constant PuppyUniforms &uniforms, texture2d<float
     // Key light slowly cycles through hues; the white body takes on its colour
     float hue = t * 0.04;
     float3 light_color = mix(float3(1.0), 0.5 + 0.5 * cos(6.2832 * (hue + float3(0.0, 0.33, 0.67))), 0.85);
-    // Weaker global light, a similar or complementary hue (picked at random per layer)
-    float3 fill_color = 0.5 + 0.5 * cos(6.2832 * (hue + uniforms.fill_hue_offset + float3(0.0, 0.33, 0.67)));
 
     // Lacquer painted the light's colour, so the hue reads strongly on both lit and shadow sides
     float diff = max(dot(n, L), 0.0);
     float3 color = light_color * light_color * (0.12 + 0.88 * diff);
     // Global light wraps the whole object, a bit stronger on the side away from the key
     float3 fill_dir = normalize(float3(-L.xy, 0.6));
-    color += fill_color * (0.08 + 0.14 * max(dot(n, fill_dir), 0.0));
+    color += light_color * (0.08 + 0.14 * max(dot(n, fill_dir), 0.0));
 
     // Clear coat: mirror a studio (sky over a dark room) off the surface
     float3 R = reflect(-V, n);
@@ -85,7 +82,7 @@ float3 puppy_shade(float2 pos, constant PuppyUniforms &uniforms, texture2d<float
                      smoothstep(-0.3, 1.0, dot(R.xy, normalize(L.xy))));
     // Round lamps far away, mirrored off the surface; the key sits along L so it matches the shading
     env += 14.0 * light_color * puppy_lamp(R.xy, L.xy, 0.32);
-    env += 5.5 * fill_color * puppy_lamp(R.xy, -L.xy * float2(1.0, 0.9), 0.12);
+    env += 5.5 * light_color * puppy_lamp(R.xy, -L.xy * float2(1.0, 0.9), 0.12);
     // Soft horizon: a hard step here drew a band along the outline where the tilt passes 45°
     env *= smoothstep(-0.6, 0.6, R.z) * 0.85 + 0.15;
 
@@ -93,6 +90,18 @@ float3 puppy_shade(float2 pos, constant PuppyUniforms &uniforms, texture2d<float
     color = color * (1.0 - fresnel) + env * fresnel;
 
     return clamp(color, 0.0, 1.0);
+}
+
+uint puppy_hash(uint h) {
+    h = (h ^ (h >> 16)) * 0x7feb352du;
+    h = (h ^ (h >> 15)) * 0x846ca68bu;
+    return h ^ (h >> 16);
+}
+
+// Camera grain: one fixed value per screen pixel, triangular like real sensor noise.
+float puppy_grain(float2 pixel) {
+    uint h = puppy_hash(uint(pixel.x) + puppy_hash(uint(pixel.y)));
+    return float(h & 0xffffu) / 65535.0 + float(h >> 16) / 65535.0 - 1.0;
 }
 
 fragment float4 fragment_shader_puppy(
@@ -105,7 +114,11 @@ fragment float4 fragment_shader_puppy(
                  + puppy_shade(in.position.xy + float2( 0.375, -0.125), uniforms, height_map)
                  + puppy_shade(in.position.xy + float2( 0.125,  0.375), uniforms, height_map)
                  + puppy_shade(in.position.xy + float2(-0.375,  0.125), uniforms, height_map);
-    return float4(color * 0.25, 1.0);
+    color *= 0.25;
+    // Faint grain, applied after the AA average so it stays one pixel fine. Scaling the colour
+    // (not adding to it) only varies brightness, so the grain stays monochrome on any hue.
+    color *= 1.0 + 0.06 * puppy_grain(in.position.xy);
+    return float4(clamp(color, 0.0, 1.0), 1.0);
 }
 """
 
@@ -115,7 +128,6 @@ private struct MetalPuppyFragmentUniforms {
   var body_size_px: SIMD2<Float>
   // swiftlint:enable identifier_name
   var time: Float
-  var fillHueOffset: Float
 }
 
 final class PuppyLayer: CAMetalLayer, Background {
@@ -133,8 +145,6 @@ final class PuppyLayer: CAMetalLayer, Background {
   private var totalElapsedTime: CGFloat = 0
   private var lastUpdateTime: CGFloat = 0
   private let minUpdateInterval: CGFloat = 1.0 / 30.0
-  /// Global light hue relative to the key: a near neighbour or the complement, chosen per layer.
-  private let fillHueOffset: Float = Bool.random() ? Float.random(in: -0.08...0.08) : 0.5
 
   deinit {
     heightTexture = nil
@@ -214,21 +224,21 @@ final class PuppyLayer: CAMetalLayer, Background {
   /// Rasterises the fruit and leaf vector paths into the two height channels the
   /// shader reads: R = bevel ramp from an exact distance transform (so the round-over
   /// starts right on the outline), G = wide blur for the crown.
-  private func bakeHeightTexture(rect: CGRect, fruit: Fruit, leaf: Leaf) {
-    bakedRect = rect
-    heightTexture = nil
-    let cs = contentsScale
+  /// Static and non-private: GlassLayer bakes the same map.
+  static func bakeHeightTexture(
+    device: MTLDevice?, rect: CGRect, contentsScale cs: CGFloat, fruit: Fruit, leaf: Leaf
+  ) -> MTLTexture? {
     let width = Int(rect.width * cs)
     let height = Int(rect.height * cs)
     // Baked at 2x and averaged down so the bevel isn't built on the mask's pixel staircase.
     let ss = 2
     let bigW = width * ss, bigH = height * ss
     let bigScale = cs * CGFloat(ss)
-    guard let device = metalDevice, width > 0, height > 0,
+    guard let device = device, width > 0, height > 0,
           let context = CGContext(
             data: nil, width: bigW, height: bigH, bitsPerComponent: 8, bytesPerRow: 0,
             space: CGColorSpaceCreateDeviceGray(), bitmapInfo: CGImageAlphaInfo.none.rawValue
-          ) else { return }
+          ) else { return nil }
     // CGContext memory already starts at the top row, matching Metal's texture rows.
     context.scaleBy(x: bigScale, y: bigScale)
     context.translateBy(x: -rect.minX, y: -rect.minY)
@@ -236,7 +246,7 @@ final class PuppyLayer: CAMetalLayer, Background {
     context.addPath(fruit.transformedPath.quartzPath)
     context.addPath(leaf.transformedPath.quartzPath)
     context.fillPath()
-    guard let maskData = context.data else { return }
+    guard let maskData = context.data else { return nil }
 
     let logoWidth = Float(fruit.transformedPath.bounds.width * bigScale)
     let maskBytes = maskData.bindMemory(to: UInt8.self, capacity: context.bytesPerRow * bigH)
@@ -309,14 +319,14 @@ final class PuppyLayer: CAMetalLayer, Background {
       pixelFormat: .rgba32Float, width: width, height: height, mipmapped: false
     )
     descriptor.usage = [.shaderRead]
-    guard let texture = device.makeTexture(descriptor: descriptor) else { return }
+    guard let texture = device.makeTexture(descriptor: descriptor) else { return nil }
     packed.withUnsafeBytes { bytes in
       texture.replace(
         region: MTLRegionMake2D(0, 0, width, height), mipmapLevel: 0,
         withBytes: bytes.baseAddress!, bytesPerRow: width * 4 * MemoryLayout<Float>.stride
       )
     }
-    heightTexture = texture
+    return texture
   }
 
   /// Gaussian approximated by three box blurs per axis (running sums, zero outside).
@@ -427,15 +437,17 @@ final class PuppyLayer: CAMetalLayer, Background {
     // The paths are re-transformed after layout, so check here rather than in update(frame:).
     let rect = fruit.bounds(including: leaf).insetBy(dx: -4, dy: -4)
     if rect != bakedRect {
-      bakeHeightTexture(rect: rect, fruit: fruit, leaf: leaf)
+      bakedRect = rect
+      heightTexture = PuppyLayer.bakeHeightTexture(
+        device: metalDevice, rect: rect, contentsScale: contentsScale, fruit: fruit, leaf: leaf
+      )
     }
 
     let cs = contentsScale
     var uniforms = MetalPuppyFragmentUniforms(
       body_origin_px: SIMD2<Float>(Float(rect.minX * cs), Float((bounds.height - rect.maxY) * cs)),
       body_size_px: SIMD2<Float>(Float(rect.width * cs), Float(rect.height * cs)),
-      time: Float(totalElapsedTime),
-      fillHueOffset: fillHueOffset
+      time: Float(totalElapsedTime)
     )
 
     let renderPassDescriptor = MTLRenderPassDescriptor()
