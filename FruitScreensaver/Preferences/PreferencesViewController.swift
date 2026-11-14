@@ -5,14 +5,17 @@ import FruitFarm
 
 /// Creates and configures the preferences window with its view controller.
 /// - Returns: A configured NSWindow instance containing the preferences interface.
-func createPreferencesWindow(preferencesRepository: PreferencesRepository) -> NSWindow {
+func createPreferencesWindow(
+  preferencesRepository: PreferencesRepository,
+  onFruitModeChanged: ((FruitMode) -> Void)? = nil
+) -> NSWindow {
   let viewController = PreferencesViewController(preferencesRepository: preferencesRepository)
+  viewController.onFruitModeChanged = onFruitModeChanged
   let window = NSWindow(contentViewController: viewController)
   window.title = "Preferences"
   window.styleMask.insert(.resizable)
-  window.center()
-  window.makeKeyAndOrderFront(nil)
-  viewController.window = window  // Store the window reference
+  window.isReleasedWhenClosed = false
+  viewController.window = window
   return window
 }
 
@@ -21,6 +24,9 @@ func createPreferencesWindow(preferencesRepository: PreferencesRepository) -> NS
 final class PreferencesViewController: NSViewController, NSTableViewDataSource, NSTableViewDelegate {
 
   weak var window: NSWindow?
+
+  /// Lets the owning screensaver view follow the selection live.
+  var onFruitModeChanged: ((FruitMode) -> Void)?
 
   let preferencesRepository: PreferencesRepository
 
@@ -38,6 +44,7 @@ final class PreferencesViewController: NSViewController, NSTableViewDataSource, 
   private lazy var metalView: MetalView = {
     let metalView = MetalView(frame: view.bounds, frameRate: 1, contrast: 1.0, brightness: 1.0)
     metalView.autoresizingMask = [.width, .height]
+    metalView.isRenderingPaused = true // unpaused in viewDidAppear
     return metalView
   }()
 
@@ -68,6 +75,7 @@ final class PreferencesViewController: NSViewController, NSTableViewDataSource, 
       self?.fruitMode = fruitMode
       self?.fruitView.update(mode: fruitMode)
       self?.preferencesRepository.updateDefaultFruitMode(fruitMode)
+      self?.onFruitModeChanged?(fruitMode)
     }
     return controlsView
   }()
@@ -89,11 +97,13 @@ final class PreferencesViewController: NSViewController, NSTableViewDataSource, 
     return label
   }()
 
-  /// Display link for synchronizing animation with screen refresh rate.
-  private var displayLink: CVDisplayLink?
+  private let displayLinkAnimator = DisplayLinkAnimator()
+
+  private var debugStatsView: DebugStatsView?
+  private var lastDebugUpdateTime: TimeInterval = 0
 
   deinit {
-    stopDisplayLink()
+    displayLinkAnimator.stop()
     NotificationCenter.default.removeObserver(self)
   }
 
@@ -112,7 +122,10 @@ final class PreferencesViewController: NSViewController, NSTableViewDataSource, 
     configView()
     addSubviews()
     configConstraints()
-    setupDisplayLink()
+    setupDisplayLinkAnimator()
+    if DebugStatsView.isEnabled {
+      setupDebugView()
+    }
   }
 
   /// Configures the main view with a black background.
@@ -145,79 +158,28 @@ final class PreferencesViewController: NSViewController, NSTableViewDataSource, 
     ])
   }
 
+  private func setupDebugView() {
+    let debugView = DebugStatsView(frame: .zero)
+    self.view.addSubview(debugView)
+    debugStatsView = debugView
+    debugView.update(fps: 60)
+    positionDebugView()
+  }
+
+  private func positionDebugView() {
+    guard let debugView = debugStatsView else { return }
+    let margin: CGFloat = 12
+    debugView.frame.origin = CGPoint(
+      x: margin,
+      y: view.bounds.height - debugView.frame.height - margin
+    )
+  }
+
   /// Called after the view is loaded.
   /// Sets up the initial frame for the fruit view.
-  override func viewDidLoad() {
-    super.viewDidLoad()
-//    fruitView.frame = self.view.bounds
-//    metalView.frame = self.view.bounds
-    addScreenDidChangeNotification()
-  }
-
-  override func viewDidLayout() {
-    super.viewDidLayout()
-    fruitView.frame = self.view.bounds
-    metalView.frame = self.view.bounds
-  }
-
-  // MARK: - Display Link
-
-  private final class DisplayLinkContext {
-    weak var controller: PreferencesViewController?
-    init(_ controller: PreferencesViewController) { self.controller = controller }
-  }
-
-  private var displayLinkContext: DisplayLinkContext?
-
-  private func stopDisplayLink() {
-    if let displayLink = displayLink {
-      CVDisplayLinkStop(displayLink)
-    }
-    displayLink = nil
-    displayLinkContext = nil
-  }
-
-  private func setupDisplayLink() {
-    stopDisplayLink()
-
-    var link: CVDisplayLink?
-    if let screen = view.window?.screen {
-      let displayID = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")]
-        as? CGDirectDisplayID ?? CGMainDisplayID()
-      CVDisplayLinkCreateWithCGDisplay(displayID, &link)
-    } else {
-      CVDisplayLinkCreateWithCGDisplay(CGMainDisplayID(), &link)
-    }
-
-    guard let displayLink = link else { return }
-    self.displayLink = displayLink
-
-    let context = DisplayLinkContext(self)
-    self.displayLinkContext = context
-
-    CVDisplayLinkSetOutputCallback(
-      displayLink, { (_, inNow, _, _, _, userInfo) -> CVReturn in
-      let ctx = Unmanaged<DisplayLinkContext>
-        .fromOpaque(userInfo!).takeUnretainedValue()
-      guard let controller = ctx.controller else { return kCVReturnSuccess }
-
-      let timeScale = Int64(inNow.pointee.videoTimeScale)
-      let frameDuration = inNow.pointee.videoRefreshPeriod
-      let fps: Int = frameDuration > 0 ? Int(timeScale / frameDuration) : 60
-
-      DispatchQueue.main.async { [weak controller] in
-        controller?.fruitView.animateOneFrame(framesPerSecond: fps)
-      }
-      return kCVReturnSuccess
-    }, Unmanaged.passUnretained(context).toOpaque())
-
-    CVDisplayLinkStart(displayLink)
-  }
-
-  // MARK: - EDR
-
-  private func addScreenDidChangeNotification() {
-    checkEDR()
+  /// The window is only known here; viewDidLoad runs before the view is in it.
+  override func viewDidAppear() {
+    super.viewDidAppear()
     if let window = view.window {
       NotificationCenter.default.addObserver(
         self,
@@ -226,12 +188,55 @@ final class PreferencesViewController: NSViewController, NSTableViewDataSource, 
         object: window
       )
     }
+    metalView.isRenderingPaused = false
+    screenDidChange()
   }
+
+  /// The window is cached and never deallocated, so stop all rendering on close.
+  override func viewDidDisappear() {
+    super.viewDidDisappear()
+    NotificationCenter.default.removeObserver(
+      self, name: NSWindow.didChangeScreenNotification, object: nil
+    )
+    metalView.isRenderingPaused = true
+    displayLinkAnimator.stop()
+  }
+
+  override func viewDidLayout() {
+    super.viewDidLayout()
+    fruitView.frame = self.view.bounds
+    metalView.frame = self.view.bounds
+    if DebugStatsView.isEnabled {
+      positionDebugView()
+    }
+  }
+
+  // MARK: - Display Link
+
+  private func setupDisplayLinkAnimator() {
+    displayLinkAnimator.onFrame = { [weak self] fps in
+      self?.fruitView.animateOneFrame(framesPerSecond: fps)
+      self?.updateDebugStatsIfNeeded(fps: fps)
+    }
+    // Started in viewDidAppear, once the window's screen is known.
+  }
+
+  private func updateDebugStatsIfNeeded(fps: Int) {
+    guard DebugStatsView.isEnabled else { return }
+    let now = CACurrentMediaTime()
+    if now - lastDebugUpdateTime >= 0.5 {
+      lastDebugUpdateTime = now
+      debugStatsView?.update(fps: fps)
+      positionDebugView()
+    }
+  }
+
+  // MARK: - EDR
 
   @objc
   private func screenDidChange() {
     checkEDR()
-    setupDisplayLink()
+    displayLinkAnimator.start(on: view.window?.screen)
   }
 
   @objc
@@ -263,7 +268,8 @@ final class PreferencesControlsView: NSView {
   /// Includes options for all available background types plus a random option.
   private lazy var optionsComboBox: NSComboBox = {
     let comboBox = NSComboBox()
-    comboBox.addItems(withObjectValues: buildMenuItems())
+    let items = FruitMenuTitles.menuItems()
+    comboBox.addItems(withObjectValues: items)
 
     let index: Int
     switch fruitMode {
@@ -273,6 +279,7 @@ final class PreferencesControlsView: NSView {
       index = FruitType.allCases.firstIndex(of: fruitType) ?? 0
     }
     comboBox.selectItem(at: index + 1)
+    comboBox.stringValue = items[index + 1] // selectItem(at:) doesn't update the text field
     comboBox.isEditable = false
     comboBox.translatesAutoresizingMaskIntoConstraints = false
 
@@ -365,7 +372,7 @@ final class PreferencesControlsView: NSView {
   /// Takes into account the font size and adds padding for the dropdown arrow.
   /// - Returns: The estimated width needed for the combo box, capped at 140 points.
   private func estimateComboBoxWidth() -> CGFloat {
-    let menuItems = buildMenuItems()
+    let menuItems = FruitMenuTitles.menuItems()
     let font = optionsComboBox.font ?? NSFont.systemFont(ofSize: NSFont.systemFontSize)
     var maxWidth: CGFloat = 0
     for item in menuItems {
@@ -375,25 +382,5 @@ final class PreferencesControlsView: NSView {
       }
     }
     return min(140, maxWidth + 40)
-  }
-
-  /// Builds the list of menu items for the combo box.
-  /// Includes a "Random" option followed by all available background types.
-  /// - Returns: An array of strings representing the menu items.
-  private func buildMenuItems() -> [String] {
-    var items: [String] = ["Random"]
-    items.append(contentsOf: FruitType.allCases.map { type in
-      switch type {
-      case .rainbow:
-        return "Rainbow Bars"
-      case .solid:
-        return "Solid"
-      case .linearGradient:
-        return "Linear Gradient"
-      case .circularGradient:
-        return "Circular Gradient"
-      }
-    })
-    return items
   }
 }

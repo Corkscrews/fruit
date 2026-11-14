@@ -12,12 +12,19 @@ Compatible with macOS 11.5 and later.
 
 ### Options
 
-Now you can select four different fruit types:
+Now you can select from multiple fruit types and backgrounds:
 
  - Rainbow
  - Solid
  - Linear gradient
  - Circular gradient
+ - Psychedelic
+ - Liquid
+ - Puppy (Fruit logo tunnel zoom)
+ - Warp Speed (relativistic star field simulation)
+ - Irish Ocean (dark North Atlantic ocean simulation)
+ - Glass (polarized glass rainbow simulation)
+ - Metallic (reflective metal surface simulation)
   
 *You are welcome to create new designs through PRs!*
 
@@ -33,7 +40,7 @@ You can change those under the options from `System Settings` -> `Screen saver` 
 
 ### Install manually
 
-1. [Click here to Download](https://github.com/Corkscrews/fruit/releases/download/1.3.3/Fruit.saver.tar.gz)
+1. [Click here to Download](https://github.com/Corkscrews/fruit/releases/download/1.3.4/Fruit.saver.tar.gz)
 2. Open **Fruit.saver** (double click).
 3. `"Fruit.saver" can't be opened because it is from an unidentified developer` will appear, press `OK`.
 4. Open `Preferences`.
@@ -62,13 +69,23 @@ If the screenshot displays a black screen, you need to do some actions to get it
 6. Quit **System Settings**.
 7. Install your new screen saver and perform the dialog dance.
 
+### Screensaver not updating after install?
+
+macOS caches the screensaver binary in `legacyScreenSaver.appex` and (on Sequoia) in `WallpaperAgent`. Copying a new `.saver` over the old one does **not** work — `cp -R` merges directories and the stale binary persists, even across reboots. Use the build script with `--install` to handle this automatically:
+
+```bash
+bash .github/scripts/build.sh --install
+```
+
+Or do it manually: kill `legacyScreenSaver`, **rm -rf** the old bundle, copy the new one, strip quarantine. See [Docs/macOS-Screensaver-Install-Cache-Bug.md](Docs/macOS-Screensaver-Install-Cache-Bug.md) for full details.
+
 ### Still not working?
 
 The Fruit screen saver can be blocked by the system as a malicious software. Sometimes on macOS Big Sur clicking `Open Anyway` in `Security & Privacy` is not fixing the issue.  
 
-To bypass this quarantine made by 🍎, you can use this command in your terminal :
+To bypass this quarantine made by 🍎, you can use this command in your terminal:
 
-```shellxc
+```bash
 sudo xattr -d com.apple.quarantine ~/"Library/Screen Savers/Fruit.saver"
 ```
 
