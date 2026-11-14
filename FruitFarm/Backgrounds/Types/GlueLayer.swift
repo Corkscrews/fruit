@@ -75,24 +75,34 @@ fragment float4 fragment_shader_glue(
     float unit = min(half_px.x, half_px.y);
     float2 p = (in.position.xy - uniforms.body_center_px) / unit;
 
-    // 1/d^2 metaballs: coincident blobs sum to exactly one blob of the merged area.
-    // The 2r..3r cutoff stops far-away tails summing into one sheet; it starts
-    // past the merged edge (1.41r), so merges stay seamless.
+    // Compact metaballs: w = q^3, q = (R^2 - d^2) / (R^2 - r^2) is 1 at the edge r
+    // and 0 from the reach R on. R is r plus at most 0.04: a tail that grows with
+    // the blob (1/d^2, or R = 2r) lets big blobs bridge wide gaps in a single frame.
     float field = 0.0;
+    float rho2 = 0.0;
     float2 grad = float2(0.0);
     for (int i = 0; i < uniforms.count; i++) {
         float2 d = p - blobs[i].xy;
         float r = blobs[i].z;
-        float d2 = max(dot(d, d), 1e-6);
-        if (d2 > 9.0 * r * r) { continue; }
-        float w = r * r / d2 * (1.0 - smoothstep(2.0 * r, 3.0 * r, sqrt(d2)));
+        float reach = r + min(r, 0.04);
+        float span = reach * reach - r * r;
+        float d2 = dot(d, d);
+        if (d2 >= reach * reach || span <= 0.0) { continue; }
+        float q = (reach * reach - d2) / span;
+        float w = q * q * q;
         field += w;
-        grad -= 2.0 * w / d2 * d;
+        rho2 += w * reach * reach / (r * r);
+        grad -= q * q / span * d;
     }
 
-    // Treat 1/sqrt(field) as d/r of a dome: exact hemisphere for a lone blob,
-    // smoothly blended across merged ones. -grad points outward.
-    float gn = min(rsqrt(max(field, 1e-6)), 1.0);
+    // Invert the kernel: g2 is exactly (d/r)^2 for a lone blob, smoothly blended
+    // across merged ones. Its root is the dome profile for shading; -grad points outward.
+    float g2 = 4.0;
+    if (field > 0.0) {
+        rho2 /= field;
+        g2 = max(rho2 - (rho2 - 1.0) * pow(field, 1.0 / 3.0), 0.0);
+    }
+    float gn = sqrt(min(g2, 1.0));
     float2 outward = normalize(-grad + float2(1e-7));
     float3 normal = float3(outward * gn, sqrt(1.0 - gn * gn));
     // Pixel y grows downward, so -y is up: light from the top-left.
@@ -101,14 +111,11 @@ fragment float4 fragment_shader_glue(
     float diffuse = max(dot(normal, light), 0.0);
     float specular = pow(max(dot(normal, halfway), 0.0), 60.0);
 
-    // Clamp first: the field spikes at blob centres and would blow up fwidth.
-    field = min(field, 4.0);
-    // 1/sqrt(field) is d/r for a lone blob: linear in distance, so dividing by
-    // its fwidth gives pixels inside the edge without spikes from nested blobs.
-    // Capped at 2: as field -> 0 it shoots up and fwidth would fake half-inside edges.
-    float g = min(rsqrt(max(field, 1e-4)), 2.0);
-    float edgePx = (1.0 - g) / max(fwidth(g), 1e-4);
-    float inside = clamp(edgePx + 0.5, 0.0, 1.0);
+    // Pixels inside the edge. g2 rather than g: the root's slope is infinite where
+    // g2 clamps to 0, which drew outlines around blobs nested in bigger ones.
+    float edgePx = (1.0 - g2) / max(fwidth(g2), 1e-4);
+    // g2 jumps to 4 where the field ends; the fade hides the ring fwidth makes of it.
+    float inside = clamp(edgePx + 0.5, 0.0, 1.0) * smoothstep(0.0, 0.1, field);
     float rim = 1.0 - smoothstep(1.5, 2.5, edgePx);
     float3 base = glue_cycle_color(uniforms.time / 90.0);
     float3 color = base * (0.65 + 0.35 * diffuse);
@@ -134,7 +141,7 @@ private struct MetalGlueFragmentUniforms {
   // swiftlint:enable identifier_name
 }
 
-/// Blobs drift together and merge; new small ones spawn into the gaps;
+/// Blobs drift together and the smaller drains into the larger; new small ones spawn into the gaps;
 /// any that grow past `ejectRadius` get pushed out of the body.
 /// Units: the body's shorter half extent is 1, origin at the body centre.
 private struct GlueSimulation {
@@ -156,6 +163,9 @@ private struct GlueSimulation {
   static let wander: Float = 0.02
   static let damping: Float = 1.5
   static let ejectPush: Float = 0.35
+  /// Fraction of its area an absorbed blob loses per second.
+  static let drain: Float = 5
+  static let minRadius: Float = 0.003
 
   var blobs: [Blob] = []
   /// Body half extents in simulation units (shorter side is 1).
@@ -179,7 +189,7 @@ private struct GlueSimulation {
       spawn(grown: false)
     }
     integrate(dt, accelerations())
-    mergeAndEject()
+    mergeAndEject(dt)
   }
 
   private func accelerations() -> [SIMD2<Float>] {
@@ -229,29 +239,31 @@ private struct GlueSimulation {
     }
   }
 
-  private mutating func mergeAndEject() {
-    var i = 0
-    while i < blobs.count {
-      var j = i + 1
-      while j < blobs.count {
+  private mutating func mergeAndEject(_ dt: Float) {
+    let share = min(1, Self.drain * dt)
+    for i in blobs.indices {
+      for j in (i + 1)..<blobs.count {
         let a = blobs[i], b = blobs[j]
-        let close = simd_length(a.pos - b.pos) < 0.25 * max(a.radius, b.radius)
-        guard close, !a.ejecting, !b.ejecting else { j += 1; continue }
-        // Merge by drawn area so a half-grown newcomer doesn't pop.
-        let ra = Self.drawnRadius(a), rb = Self.drawnRadius(b)
-        let ma = ra * ra, mb = rb * rb, m = max(ma + mb, 1e-8)
-        blobs[i].pos = (a.pos * ma + b.pos * mb) / m
-        blobs[i].vel = (a.vel * ma + b.vel * mb) / m
-        blobs[i].radius = sqrt(ma + mb)
-        blobs[i].growth = 1
-        blobs.remove(at: j)
+        guard !a.ejecting, !b.ejecting,
+              simd_length(a.pos - b.pos) < max(a.radius, b.radius) else { continue }
+        // Area flows from the smaller to the larger over several frames, so
+        // nothing jumps: the small one shrinks away, the big one swells and shifts.
+        let (big, small) = a.radius >= b.radius ? (i, j) : (j, i)
+        let mb = blobs[big].radius * blobs[big].radius
+        let ms = blobs[small].radius * blobs[small].radius
+        let dm = ms * share
+        blobs[big].pos += (blobs[small].pos - blobs[big].pos) * dm / (mb + dm)
+        blobs[big].vel += (blobs[small].vel - blobs[big].vel) * dm / (mb + dm)
+        blobs[big].radius = sqrt(mb + dm)
+        blobs[small].radius = sqrt(ms - dm)
       }
       if blobs[i].radius > Self.ejectRadius { blobs[i].ejecting = true }
-      i += 1
     }
-    let limit = extent + 0.05
+    // An ejecting blob goes once its whole field (at most 2r) is off the body, so
+    // its neighbours don't snap thinner when it disappears.
     blobs.removeAll { blob in
-      blob.ejecting && (abs(blob.pos.x) - blob.radius > limit.x || abs(blob.pos.y) - blob.radius > limit.y)
+      let reach = abs(blob.pos) - 2 * blob.radius
+      return blob.radius < Self.minRadius || (blob.ejecting && (reach.x > extent.x || reach.y > extent.y))
     }
   }
 
