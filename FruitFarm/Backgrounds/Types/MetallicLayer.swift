@@ -24,142 +24,179 @@ vertex VertexOut vertex_shader_metallic(
 }
 
 struct MetallicUniforms {
-    float2 resolution;
-    float2 body_center_px;
-    float2 body_half_px;
-    float time;
-    float zoom_factor;
+    float4 anim;        // (a, sin a, cos a, grain seed); a is the 30 s loop phase
+    float2 lp_scale;    // lp = position * lp_scale + lp_offset
+    float2 lp_offset;
+    float2 uv_scale;    // logo uv = position * uv_scale + uv_offset
+    float2 uv_offset;
+    float2 lp_to_uv;    // d(uv)/d(lp)
+    float2 blobs[7];    // this frame's blob centres
 };
 
 float metallic_hash(float2 p) {
     return fract(sin(dot(p, float2(41.0, 289.0))) * 45758.5453);
 }
 
-float metallic_line(float value, float width) {
-    return exp(-(value * value) / max(width * width, 0.0001));
-}
+// Smooth gallium-like heightfield over the skewed coords p: equal soft blobs + gentle folds.
+// Returns (height, d/dlp.x, d/dlp.y): the analytic gradient lets the normal's four
+// taps extrapolate one evaluation instead of running this four times.
+float3 metallic_gallium(float2 p, constant MetallicUniforms &u) {
+    float sa = u.anim.y, ca = u.anim.z;
+    float cwx, swx = sincos(p.y * 1.8 + sa * 1.1, cwx);
+    float cwy, swy = sincos(p.x * 2.2 + ca * 0.9, cwy);
+    float2 q = p + float2(0.30 * swx, 0.22 * cwy);
 
-float metallic_bloom(float2 lp, float2 center, float2 axes, float falloff) {
-    float2 d = (lp - center) / max(axes, float2(0.001));
-    return exp(-falloff * dot(d, d));
-}
-
-// Smooth gallium-like heightfield: overlapping soft blobs + wave folds.
-float metallic_gallium(float2 p, float a) {
-    float2 q = p;
-    q.x += 0.30 * sin(p.y * 1.8 + sin(a) * 1.1);
-    q.y += 0.22 * cos(p.x * 2.2 + cos(a) * 0.9);
-
+    // exp(-k d²) as exp2, k = 3.6
     float v = 0.0;
-    float2 c0 = float2(-0.55 + 0.15 * cos(a), -0.30 + 0.12 * sin(a));
-    float2 c1 = float2( 0.50 + 0.12 * sin(a * 2.0), 0.25 + 0.10 * cos(a));
-    float2 c2 = float2(-0.10 + 0.10 * cos(a * 3.0), 0.72 + 0.06 * sin(a));
-    float2 c3 = float2( 0.80 + 0.08 * cos(a), -0.55 + 0.10 * sin(a * 2.0));
-    float2 c4 = float2(-0.75 + 0.06 * sin(a * 2.0), 0.45 + 0.08 * cos(a * 3.0));
-    float2 c5 = float2( 0.15 + 0.12 * sin(a), -0.78 + 0.06 * cos(a * 2.0));
+    float2 gq = float2(0.0); // dv/dq, before the -2k factor
+    #pragma unroll
+    for (int i = 0; i < 7; i++) {
+        float2 d = q - u.blobs[i];
+        float b = exp2(-3.6 * 1.44269504 * dot(d, d));
+        v += b;
+        gq += b * d;
+    }
+    gq *= -2.0 * 3.6;
 
-    v += exp(-3.0 * dot(q - c0, q - c0));
-    v += exp(-2.6 * dot(q - c1, q - c1));
-    v += exp(-2.8 * dot(q - c2, q - c2));
-    v += exp(-3.5 * dot(q - c3, q - c3));
-    v += exp(-4.0 * dot(q - c4, q - c4));
-    v += exp(-3.2 * dot(q - c5, q - c5));
+    float c1, s1 = sincos(q.x * 2.2 + q.y * 1.5 + sa * 1.4, c1);
+    float c2, s2 = sincos(q.x * 1.6 - q.y * 2.8 + ca * 1.2, c2);
+    v += 0.15 * s1 + 0.10 * c2;
+    gq += 0.15 * c1 * float2(2.2, 1.5) - 0.10 * s2 * float2(1.6, -2.8);
 
-    v += 0.35 * sin(q.x * 2.2 + q.y * 1.5 + sin(a) * 1.4);
-    v += 0.25 * cos(q.x * 1.6 - q.y * 2.8 + cos(a) * 1.2);
-    v += 0.18 * sin((q.x + q.y) * 3.2 + sin(a * 2.0));
-    return v;
+    // Chain rule back through the q warp, then the p skew
+    float2 gp = float2(gq.x - gq.y * (0.22 * 2.2) * swy, gq.y + gq.x * (0.30 * 1.8) * cwx);
+    return float3(v, gp.x - 0.08 * gp.y, gp.y + 0.12 * gp.x);
 }
 
-float3 metallic_surface_color(float2 lp, float a) {
+// Studio environment seen in the mirror. Hard panel and horizon edges are what
+// make the surface read as liquid metal; soft gradients alone read as satin.
+half3 metallic_env(half3 r) {
+    half up = -r.y; // screen y points down
+    half3 c = mix(half3(0.015, 0.02, 0.035), half3(0.20, 0.23, 0.30), smoothstep(-0.9h, 0.9h, up));
+
+    // Bright horizon glow with a hard lower edge
+    c += half3(0.62, 0.68, 0.78) * smoothstep(0.10h, 0.13h, up) * smoothstep(0.75h, 0.13h, up);
+
+    // Warm round key lamp (upper left): crisp disc, brighter core, faint halo
+    half d = length(half2(r.x + 0.25h, up - 0.75h)) * 5.0h;
+    half key = smoothstep(1.0h, 0.85h, d) * (0.82h + 0.18h * (1.0h - d)) + 0.12h * exp2(-d * d * half(0.8 * 1.44269504));
+    c += half3(1.00, 0.96, 0.86) * (key * 0.95h);
+    return c;
+}
+
+// Thin-film interference (soap bubble / oil slick): each wavelength reflects at its own
+// phase, set by film thickness `d` (nm) and the refracted angle inside the film (n = 1.33).
+half3 metallic_thin_film(float d, half cos_i) {
+    half cos_t = sqrt(max(1.0h - (1.0h - cos_i * cos_i) * half(1.0 / (1.33 * 1.33)), 0.0h));
+    // 4π n / λ for 650, 532, 450 nm; the phase reaches ~120 rad, so it stays float
+    float3 phase = (d * float(cos_t)) * float3(16.7132729 / 650.0, 16.7132729 / 532.0, 16.7132729 / 450.0);
+    return 0.5h + 0.5h * half3(cos(phase));
+}
+
+// Narkowicz ACES filmic fit: rolls highlights off instead of clipping them.
+half3 metallic_aces(half3 x) {
+    return saturate((x * (2.51h * x + 0.03h)) / (x * (2.43h * x + 0.59h) + 0.14h));
+}
+
+// `surface` is the logo slab baked once (R = height, G = face: 1 on the flat top, 0 off the logo).
+half3 metallic_surface_color(float2 lp, float2 uv, constant MetallicUniforms &u, texture2d<float> surface) {
+    constexpr sampler s(filter::linear, address::clamp_to_edge);
+    float a = u.anim.x;
     float2 p = float2(lp.x + lp.y * 0.12, lp.y - lp.x * 0.08);
+    float3 g = metallic_gallium(p, u);
 
-    // Heightfield and numeric surface normals
-    float e = 0.010;
-    float hx = metallic_gallium(p + float2(e, 0.0), a) - metallic_gallium(p - float2(e, 0.0), a);
-    float hy = metallic_gallium(p + float2(0.0, e), a) - metallic_gallium(p - float2(0.0, e), a);
-    float3 n = normalize(float3(-hx * 5.0, -hy * 5.0, 0.28));
+    // The liquid keeps trying to set into the logo slab but never holds it: `form`
+    // travels across the body, so one part is a crisp bevel while another slumps back.
+    float cf1, sf1 = sincos(a + p.x * 1.7 + p.y * 0.9, cf1);
+    float cf2, sf2 = sincos(a * 2.0 - p.y * 2.3 + p.x * 1.1, cf2);
+    float t = saturate((0.55 + 0.32 * sf1 + 0.24 * sf2 - 0.20) * (1.0 / 0.60));
+    float form = t * t * (3.0 - 2.0 * t);
+    float2 dfp = (10.0 * t * (1.0 - t)) * (0.32 * cf1 * float2(1.7, 0.9) + 0.24 * cf2 * float2(1.1, -2.3));
+    float2 dform = float2(dfp.x - 0.08 * dfp.y, dfp.y + 0.12 * dfp.x);
 
-    // Environment: bright top hemisphere, grey sides, dark bottom
-    float3 envUp   = float3(0.72, 0.74, 0.78);
-    float3 envSide = float3(0.28, 0.32, 0.38);
-    float3 envDown = float3(0.03, 0.03, 0.04);
-    float3 envColor = mix(envDown, envUp, smoothstep(-0.75, 0.55, n.y));
-    envColor = mix(envColor, envSide, smoothstep(0.15, 0.85, abs(n.x)) * 0.55);
+    // Unset liquid drags the outline around; its lp-gradient bends the taps to match.
+    float cdy, sdy = sincos(p.y * 2.3 + a, cdy);
+    float cdx, sdx = sincos(p.x * 2.1 - a, cdx);
+    float m = 0.03 * (1.0 - form);
+    float2 uvc = uv + m * float2(sdy, cdx);
+    float2 drag_x = -0.03 * sdy * dform + m * cdy * float2(-0.184, 2.3);
+    float2 drag_y = -0.03 * cdx * dform - m * sdx * float2(2.1, 0.252);
 
-    // Fresnel: steep edges reflect more
-    float fresnel = pow(1.0 - clamp(n.z, 0.0, 1.0), 3.0);
-    float3 color = envColor * (0.50 + 0.50 * fresnel);
+    // Four normal taps, each extrapolated from the centre except the logo itself
+    const float e = 0.010;
+    float2 tx = e * float2(u.lp_to_uv.x + drag_x.x, drag_y.x);
+    float2 ty = e * float2(drag_x.y, u.lp_to_uv.y + drag_y.y);
+    float2 lr = surface.sample(s, uvc + tx).rg;
+    float2 ll = surface.sample(s, uvc - tx).rg;
+    float2 ld = surface.sample(s, uvc + ty).rg;
+    float2 lu = surface.sample(s, uvc - ty).rg;
+    float4 slab = float4(lr.x, ll.x, ld.x, lu.x);
+    float4 face = float4(lr.y, ll.y, ld.y, lu.y);
+    float4 liquid = g.x + e * float4(g.y, -g.y, g.z, -g.z);
+    float4 f = saturate(form + e * float4(dform.x, -dform.x, dform.y, -dform.y));
+    // Edge protection: where the slab has set, ripples only survive on the flat face, so the bevel stays crisp.
+    float4 hgt = liquid * (1.0 - 0.75 * f) * mix(1.0, face, f) + 2.1 * f * slab;
+    float3 n = normalize(float3(-(hgt.x - hgt.y) * 3.5, -(hgt.z - hgt.w) * 3.5, 0.28));
 
-    // Three specular lights for narrow highlights
-    float3 L1 = normalize(float3(-0.30, -0.55, 0.78));
-    float3 L2 = normalize(float3( 0.50,  0.28, 0.82));
-    float3 L3 = normalize(float3( 0.0,  -0.80, 0.60));
-    float spec1 = pow(clamp(dot(n, L1), 0.0, 1.0), 56.0);
-    float spec2 = pow(clamp(dot(n, L2), 0.0, 1.0), 42.0);
-    float spec3 = pow(clamp(dot(n, L3), 0.0, 1.0), 68.0);
-    color += float3(1.00, 0.99, 0.94) * spec1 * 0.90;
-    color += float3(0.85, 0.92, 1.00) * spec2 * 0.70;
-    color += float3(1.00, 0.97, 0.90) * spec3 * 0.55;
+    // Pure mirror reflection, slightly brighter at grazing angles
+    half3 hn = half3(n);
+    half3 r = reflect(half3(0.0h, 0.0h, -1.0h), hn);
+    half nz = saturate(hn.z);
+    half fr = 1.0h - nz;
+    half3 color = metallic_env(r) * (0.85h + 1.4h * fr * fr * fr);
 
-    // Deep narrow creases where surface curves away sharply
-    float crease = smoothstep(0.38, 0.10, n.z);
-    color *= 1.0 - crease * 0.92;
+    // Iridescent film on the metal. Its thickness rides the surface height (liquid plus the
+    // inflated logo), so the colour bands follow the ripples and the outline.
+    float h = dot(hgt, float4(0.25));
+    half3 film = metallic_thin_film(720.0 + 70.0 * h, nz);
+    // Only where the film gathers: the highest crests (h tops out near 3.3) and steep
+    // edges. Elsewhere it stays plain gallium.
+    half sheen = max(smoothstep(2.85h, 3.2h, half(h)), smoothstep(0.55h, 0.35h, nz));
+    color *= mix(half3(1.0h), 0.3h + 1.4h * film, 0.55h * sheen);
 
-    // Broad bright areas where surface faces viewer
-    float facing = smoothstep(0.50, 0.92, n.z);
-    color += float3(0.90, 0.92, 0.94) * facing * 0.18;
+    // One pin-sharp glint; L = normalize(-0.30, -0.55, 0.78)
+    color += half3(1.00h, 0.99h, 0.94h) * half(pow(saturate(dot(n, float3(-0.29987, -0.54975, 0.77965))), 400.0));
 
-    // Warm highlights / cool shadows tinting
-    float lum = dot(color, float3(0.299, 0.587, 0.114));
-    color = mix(color * float3(0.90, 0.93, 1.06), color * float3(1.04, 1.01, 0.96), smoothstep(0.28, 0.72, lum));
-
-    // Reduce overall brightness, increase contrast
-    color *= 0.8;
-    color = (color - 0.5) * 1.55 + 0.5;
+    // Dark seams where the surface curves away sharply
+    color *= 1.0h - 0.25h * smoothstep(0.20h, 0.05h, nz);
 
     return color;
 }
 
 fragment float4 fragment_shader_metallic(
     VertexOut in [[stage_in]],
-    constant MetallicUniforms &uniforms [[buffer(0)]]) {
+    constant MetallicUniforms &uniforms [[buffer(0)]],
+    texture2d<float> surface [[texture(0)]]) {
 
-    float2 half_px = max(uniforms.body_half_px, float2(1.0));
-    float zoom = max(uniforms.zoom_factor, 0.001);
-    float2 lp = ((in.position.xy - uniforms.body_center_px) / half_px) / zoom;
+    // The layer is masked to the logo, so skip the corners of the box: the face is 0 outside the outline.
+    constexpr sampler s(filter::linear, address::clamp_to_edge);
+    float2 uv = in.position.xy * uniforms.uv_scale + uniforms.uv_offset;
+    if (surface.sample(s, uv).g <= 0.0) { return float4(0.0, 0.0, 0.0, 1.0); }
 
-    float loop = fract(uniforms.time / 14.0);
-    float a = loop * 6.28318530718;
-
-    float2 chromaDirection = normalize(lp + float2(0.0001));
-    float2 chromaOffset = chromaDirection * 0.0055;
-
-    float3 centerColor = metallic_surface_color(lp, a);
-    float3 splitColor = float3(
-        metallic_surface_color(lp + chromaOffset, a).r,
-        centerColor.g,
-        metallic_surface_color(lp - chromaOffset, a).b
-    );
-    float3 color = mix(centerColor, splitColor, 0.55);
+    float2 lp = in.position.xy * uniforms.lp_scale + uniforms.lp_offset;
+    half3 color = metallic_surface_color(lp, uv, uniforms, surface);
 
     // Fine film-grain noise (per-pixel, temporal)
-    float grain = metallic_hash(floor(in.position.xy) + fract(uniforms.time * 37.0)) - 0.5;
-    color += float3(grain * 0.025);
+    half grain = half(metallic_hash(floor(in.position.xy) + uniforms.anim.w)) - 0.5h;
+    color += grain * 0.025h;
 
-    color = pow(clamp(color, 0.0, 1.0), float3(0.94));
-    return float4(color, 1.0);
+    color = metallic_aces(max(color, 0.0h) * 1.3h);
+    // S-curve for contrast: deeper blacks, punchier highlights
+    color = mix(color, color * color * (3.0h - 2.0h * color), 0.7h);
+    return float4(float3(color), 1.0);
 }
 """
 
+/// Mirrors `MetallicUniforms`: everything that is constant across a frame is worked out here, once.
 private struct MetalMetallicFragmentUniforms {
-  var resolution: SIMD2<Float>
-  // swiftlint:disable identifier_name
-  var body_center_px: SIMD2<Float>
-  var body_half_px: SIMD2<Float>
-  var time: Float
-  var zoom_factor: Float
-  // swiftlint:enable identifier_name
+  var anim: SIMD4<Float>
+  var lpScale: SIMD2<Float>
+  var lpOffset: SIMD2<Float>
+  var uvScale: SIMD2<Float>
+  var uvOffset: SIMD2<Float>
+  var lpToUV: SIMD2<Float>
+  // swiftlint:disable:next large_tuple
+  var blobs: (SIMD2<Float>, SIMD2<Float>, SIMD2<Float>, SIMD2<Float>, SIMD2<Float>, SIMD2<Float>, SIMD2<Float>)
 }
 
 // swiftlint:disable:next type_body_length
@@ -170,6 +207,10 @@ final class MetallicLayer: CAMetalLayer, Background {
   private var commandQueue: MTLCommandQueue?
   private var pipelineState: MTLRenderPipelineState?
   private var vertexBuffer: MTLBuffer?
+  private var heightTexture: MTLTexture?
+  /// Logo rect (points) the height texture was baked for; rebaked when it changes.
+  private var bakedRect = CGRect.null
+  private var isBaking = false
 
   // MARK: - Animation
   private var totalElapsedTime: CGFloat = 0
@@ -186,6 +227,7 @@ final class MetallicLayer: CAMetalLayer, Background {
   }
 
   deinit {
+    heightTexture = nil
     vertexBuffer = nil
     pipelineState = nil
     commandQueue = nil
@@ -289,11 +331,75 @@ final class MetallicLayer: CAMetalLayer, Background {
     }
   }
 
+  /// Bakes the same logo relief PuppyLayer and GlassLayer use, off the main thread.
+  private func bakeLogoIfNeeded() {
+    guard let fruit = currentFruit, let leaf = currentLeaf else { return }
+    // The paths are re-transformed after layout, so check here rather than in update(frame:).
+    let rect = fruit.bounds(including: leaf).insetBy(dx: -4, dy: -4)
+    guard rect != bakedRect && !isBaking else { return }
+    isBaking = true
+    let device = metalDevice, scale = contentsScale
+    let fruitPath = fruit.transformedPath.quartzPath, leafPath = leaf.transformedPath.quartzPath
+    DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+      let baked = PuppyLayer.bakeHeightTexture(
+        device: device, rect: rect, contentsScale: scale, fruitPath: fruitPath, leafPath: leafPath
+      ).flatMap { MetallicLayer.bakeSlabTexture(from: $0) }
+      DispatchQueue.main.async {
+        guard let self = self else { return }
+        self.heightTexture = baked
+        self.bakedRect = rect
+        self.isBaking = false
+        self.setNeedsDisplay()  // re-checks the rect, in case it changed meanwhile
+      }
+    }
+  }
+
+  /// Folds the slab profile into the relief once, so the shader reads (height, face) per tap
+  /// instead of rebuilding it from the bevel ramp, and fetches half the bytes.
+  static func bakeSlabTexture(from relief: MTLTexture) -> MTLTexture? {
+    let width = relief.width, height = relief.height
+    var rgba = [Float](repeating: 0, count: width * height * 4)
+    rgba.withUnsafeMutableBytes { bytes in
+      relief.getBytes(
+        bytes.baseAddress!, bytesPerRow: width * 4 * MemoryLayout<Float>.stride,
+        from: MTLRegionMake2D(0, 0, width, height), mipmapLevel: 0
+      )
+    }
+    var slab = [Float](repeating: 0, count: width * height * 2)
+    for index in 0..<(width * height) {
+      // R = bevel ramp, G = crown, B = leafness
+      let k = 1 - min(max(rgba[index * 4], 0), 1)
+      let leafness = rgba[index * 4 + 2]
+      slab[index * 2] = 0.55 * (1 - k * k * (k + (1 - k) * leafness)).squareRoot() + 0.45 * rgba[index * 4 + 1]
+      slab[index * 2 + 1] = 1 - k
+    }
+    let descriptor = MTLTextureDescriptor.texture2DDescriptor(
+      pixelFormat: .rg32Float, width: width, height: height, mipmapped: false
+    )
+    descriptor.usage = [.shaderRead]
+    guard let texture = relief.device.makeTexture(descriptor: descriptor) else { return nil }
+    slab.withUnsafeBytes { bytes in
+      texture.replace(
+        region: MTLRegionMake2D(0, 0, width, height), mipmapLevel: 0,
+        withBytes: bytes.baseAddress!, bytesPerRow: width * 2 * MemoryLayout<Float>.stride
+      )
+    }
+    return texture
+  }
+
+  /// Hex layout: a ring of six at r = 0.78 plus the centre.
+  private static let blobHomes: [SIMD2<Float>] = [
+    [0.6755, 0.39], [0.0, 0.78], [-0.6755, 0.39], [-0.6755, -0.39], [0.0, -0.78], [0.6755, -0.39], [0.0, 0.0]
+  ]
+
   // MARK: - Drawing
   override func display() {
+    bakeLogoIfNeeded()
+    // Nothing is drawn until the relief lands, like PuppyLayer.
     guard let pipelineState = pipelineState,
           let commandQueue = commandQueue,
           let vertexBuffer = vertexBuffer,
+          let heightTexture = heightTexture,
           let drawable = nextDrawable() else { return }
     let texture = drawable.texture
 
@@ -317,12 +423,22 @@ final class MetallicLayer: CAMetalLayer, Background {
       )
     }
 
+    let lpPerPx = 1 / (pointwiseMax(bodyHalfPx, SIMD2<Float>(repeating: 1)) * Float(max(metallicZoomFactor, 0.001)))
+    let logoOrigin = SIMD2<Float>(Float(bakedRect.minX * cs), Float((bounds.height - bakedRect.maxY) * cs))
+    let logoSize = SIMD2<Float>(Float(bakedRect.width * cs), Float(bakedRect.height * cs))
+    let a = Float((totalElapsedTime / 30).truncatingRemainder(dividingBy: 1) * 2 * .pi)
+    // Each blob orbits its home along (cos(a + 2.1i), sin(2a + 1.3i))
+    let blob = { (i: Int) -> SIMD2<Float> in
+      Self.blobHomes[i] + 0.10 * SIMD2<Float>(cos(a + 2.1 * Float(i)), sin(2 * a + 1.3 * Float(i)))
+    }
     var uniforms = MetalMetallicFragmentUniforms(
-      resolution: SIMD2<Float>(Float(texture.width), Float(texture.height)),
-      body_center_px: bodyCenterPx,
-      body_half_px: bodyHalfPx,
-      time: Float(totalElapsedTime),
-      zoom_factor: Float(metallicZoomFactor)
+      anim: SIMD4<Float>(a, sin(a), cos(a), Float((totalElapsedTime * 37).truncatingRemainder(dividingBy: 1))),
+      lpScale: lpPerPx,
+      lpOffset: -bodyCenterPx * lpPerPx,
+      uvScale: 1 / logoSize,
+      uvOffset: -logoOrigin / logoSize,
+      lpToUV: 1 / (lpPerPx * logoSize),
+      blobs: (blob(0), blob(1), blob(2), blob(3), blob(4), blob(5), blob(6))
     )
 
     let renderPassDescriptor = MTLRenderPassDescriptor()
@@ -359,6 +475,7 @@ final class MetallicLayer: CAMetalLayer, Background {
       length: MemoryLayout<MetalMetallicFragmentUniforms>.stride,
       index: 0
     )
+    renderEncoder.setFragmentTexture(heightTexture, index: 0)
     renderEncoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6)
 
     renderEncoder.endEncoding()
