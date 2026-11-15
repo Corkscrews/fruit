@@ -16,8 +16,8 @@ jobs:
       with:
         fetch-depth: 1
 
-      - name: 🧹 SwiftLint
-        run: swiftlint --reporter github-actions-logging --strict
+    - name: 🧹 SwiftLint
+      run: swiftlint --reporter github-actions-logging --strict
 
   build:
     name: 🏗️ Build

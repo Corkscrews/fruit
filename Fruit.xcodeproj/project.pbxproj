@@ -70,6 +70,7 @@
 				FruitScreensaver.swift,
 				Info.plist,
 				Media.xcassets,
+				Preferences/FruitMenuTitles.swift,
 				Preferences/PreferencesRepository.swift,
 				Preferences/PreferencesViewController.swift,
 			);
@@ -80,6 +81,7 @@
 			membershipExceptions = (
 				DebugStatsView.swift,
 				DisplayLinkAnimator.swift,
+				Preferences/FruitMenuTitles.swift,
 				Preferences/PreferencesRepository.swift,
 				Preferences/PreferencesViewController.swift,
 			);
