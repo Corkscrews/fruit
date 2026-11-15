@@ -1,8 +1,10 @@
 # Fruit
 
-<a href="https://github.com/Corkscrews/fruit/actions"><img src="https://github.com/Corkscrews/fruit/workflows/Tests/badge.svg" alt="Github Workflow Status"></a>
+<a href="https://formulae.brew.sh/cask/fruit-screensaver"><img src="https://img.shields.io/homebrew/cask/v/fruit-screensaver?logo=homebrew&label=brew%20install%20--cask%20fruit-screensaver" alt="Homebrew cask"></a>
+<a href="https://github.com/Corkscrews/fruit/actions/workflows/tests.yml"><img src="https://github.com/Corkscrews/fruit/actions/workflows/tests.yml/badge.svg" alt="Tests"></a>
+<a href="https://github.com/Corkscrews/fruit/releases/latest"><img src="https://img.shields.io/github/v/release/Corkscrews/fruit" alt="Latest release"></a>
 
-Screensaver of the vintage 🍎 logo made purely with `NSBezierPath` and masks in Swift. Now with support to EDR!
+A macOS screensaver of the vintage 🍎 logo, drawn with `NSBezierPath` masks in Swift and filled by Metal shaders, with EDR support.
 
 Compatible with macOS 11.5 and later.
 
@@ -10,72 +12,104 @@ Compatible with macOS 11.5 and later.
   <img src="https://github.com/Corkscrews/fruit/blob/master/art/screenshot.gif" width="600"/>
 </p>
 
-### Options
+## Install
 
-Now you can select four different fruit types:
+### Homebrew (recommended)
 
- - Rainbow
- - Solid
- - Linear gradient
- - Circular gradient
-  
-*You are welcome to create new designs through PRs!*
+Fruit is available as a [Homebrew cask](https://formulae.brew.sh/cask/fruit-screensaver):
 
-You can change those under the options from `System Settings` -> `Screen saver` -> `Options...`.
+```bash
+brew install --cask fruit-screensaver
+```
+
+Then open **System Settings → Screen Saver** and select **Fruit**.
+
+The build is not notarized, so macOS may refuse to open it the first time. Clear the quarantine flag and select it again:
+
+```bash
+xattr -dr com.apple.quarantine ~/"Library/Screen Savers/Fruit.saver"
+```
+
+Update or remove it with:
+
+```bash
+brew upgrade --cask fruit-screensaver
+brew uninstall --cask --zap fruit-screensaver
+```
+
+### Manual download
+
+1. [Download the latest Fruit.saver.tar.gz](https://github.com/Corkscrews/fruit/releases/latest/download/Fruit.saver.tar.gz) and extract it.
+2. Double-click **Fruit.saver** to install it.
+3. If macOS says it is from an unidentified developer, press **OK**, open **System Settings → Privacy & Security**, and press **Open Anyway** next to the Fruit message. If that does not work, run the `xattr` command above.
+
+### Build from source
+
+1. Clone the project.
+2. Run `bash .github/scripts/build.sh --install`, or open `Fruit.xcodeproj`, select the `Fruit` target and **Archive** it.
+3. If you archived it, right-click the `.xcarchive`, select **Show Package Contents**, open `Products` until you find `Fruit.saver`, and double-click it.
+4. Select **Fruit** in the Screen Saver settings.
+
+## Backgrounds
+
+Pick a background in **System Settings → Screen Saver → Options…**, or choose **Random** to switch to a new one every minute.
+
+| | Background | Description |
+|:-:|---|---|
+| <img src="art/types/rainbow.png" width="120"/> | **Rainbow Bars** | The classic six-color stripes, scrolling slowly up through the logo. This is the original animation, the one that gave me the idea for this project, and I am infinitely grateful for it. |
+| <img src="art/types/solid.png" width="120"/> | **Solid** | One flat color that fades through the rainbow palette. |
+| <img src="art/types/linearGradient.png" width="120"/> | **Linear Gradient** | A top-to-bottom gradient of the rainbow colors that shifts over time. |
+| <img src="art/types/circularGradient.png" width="120"/> | **Circular Gradient** | A radial gradient of the rainbow colors that shifts over time. |
+| <img src="art/types/psychedelic.png" width="120"/> | **Psychedelic** | Fast, heavily warped plasma with hard color bands. |
+| <img src="art/types/california-spring.png" width="58"/> <img src="art/types/california-summer.png" width="58"/><br><img src="art/types/california-fall.png" width="58"/> <img src="art/types/california-winter.png" width="58"/> | **California** | A leaf with pulsing veins, dew drops and a wandering ladybird. Day/night and the season follow your clock; shown at midday in spring, summer, fall and winter. |
+| <img src="art/types/liquid.png" width="120"/> | **Liquid** | Smooth, layered domain-warped flow with soft color bands. |
+| <img src="art/types/puppy.png" width="120"/> | **Puppy** | A beveled 3D logo lit by a lamp that orbits it and slowly changes hue. |
+| <img src="art/types/warp.png" width="120"/> | **Warp Speed** | A relativistic star field that starts at rest; as the ship speeds up, stars stretch into streaks, shift color and crowd the center. |
+| <img src="art/types/ocean.png" width="120"/> | **Irish Ocean** | A dark North Atlantic sea with rolling waves, foam and spray. |
+| <img src="art/types/glass.png" width="120"/> | **Glass** | A thick glass slab over polarized-light rainbow fringes. |
+| <img src="art/types/metallic.png" width="120"/> | **Metallic** | A liquid-metal surface reflecting a studio environment. |
+| <img src="art/types/pogo.png" width="120"/> | **POGO** | Organic, Turing-like patterns that crawl and reshape. |
+| <img src="art/types/glue.png" width="120"/> | **Glue** | Glossy blobs that drift and merge like drops of glue. |
+
+*New designs are welcome through PRs!*
 
 <p align="center">
   <img src="https://github.com/Corkscrews/fruit/blob/master/art/options_menu.png" width="600"/>
 </p>
 
-### Install
-
-1. Run `brew install --cask --no-quarantine fruit-screensaver`
-
-### Install manually
-
-1. [Click here to Download](https://github.com/Corkscrews/fruit/releases/download/1.3.3/Fruit.saver.tar.gz)
-2. Open **Fruit.saver** (double click).
-3. `"Fruit.saver" can't be opened because it is from an unidentified developer` will appear, press `OK`.
-4. Open `Preferences`.
-5. Select `Security & Privacy`.
-6. Select `General`.
-7. On the bottom side, select `Open Anyway`.
-
-If this doesn't work, please do the manual described below.
-
-### Install from the source code
-
-1. Clone the project.
-2. Open the `Fruit.xcodeproj`, select `Fruit` target  and `Archive` it.
-3. Open the `.xcarchive` generated by right-click and select `Show Package Contents`, go to `Products` folder till you find the `.saver` file, double click on it.
-4. You should have installed it by now, go to your screensaver settings and confirm if the screensaver is selected.
-   
 ## Troubleshooting 🤕
 
-If the screenshot displays a black screen, you need to do some actions to get it back:
+### Black screen or old version after an update
 
-1. Delete your old output files before running a new build.
-2. Build your project.
-3. Go to **Activity Monitor** and force quit any `legacyScreenSaver` processes (especially on Sonoma – we’ll discuss this more [later](https://zsmb.co/building-a-macos-screen-saver-in-kotlin/#macos-sonoma)).
-4. Go to **System Settings**, choose any screen saver other than your custom one.
-5. Delete your custom screen saver from **System Settings**.
-6. Quit **System Settings**.
-7. Install your new screen saver and perform the dialog dance.
+macOS caches the screensaver binary in `legacyScreenSaver.appex` and (on Sequoia) in `WallpaperAgent`. Copying a new `.saver` over the old one does **not** work: `cp -R` merges directories and the stale binary persists, even across reboots. When building from source, use the build script to replace it cleanly:
 
-### Still not working?
-
-The Fruit screen saver can be blocked by the system as a malicious software. Sometimes on macOS Big Sur clicking `Open Anyway` in `Security & Privacy` is not fixing the issue.  
-
-To bypass this quarantine made by 🍎, you can use this command in your terminal :
-
-```shellxc
-sudo xattr -d com.apple.quarantine ~/"Library/Screen Savers/Fruit.saver"
+```bash
+bash .github/scripts/build.sh --install
 ```
 
-### Special thanks
+To do it by hand:
 
-I would like to thank [Mátrton Braun](https://github.com/zsmb13) for helping me to fix the issues related to macOS Sonoma in his article: https://zsmb.co/building-a-macos-screen-saver-in-kotlin. Also thank you [pedrommcarrasco](https://github.com/pedrommcarrasco) for providing Brooklyn that massively helped and guided me to develop this screensaver.
+1. Select any other screen saver in **System Settings**.
+2. Force quit every `legacyScreenSaver` process in **Activity Monitor**.
+3. Delete `~/Library/Screen Savers/Fruit.saver` (`rm -rf`, not a copy over it).
+4. Quit **System Settings**, install the new build, and clear its quarantine flag.
+
+See [Docs/macOS-Screensaver-Install-Cache-Bug.md](Docs/macOS-Screensaver-Install-Cache-Bug.md) and [Docs/macOS-Sonoma-Screensaver-Issue.md](Docs/macOS-Sonoma-Screensaver-Issue.md) for details.
+
+### Blocked as malicious software
+
+If **Open Anyway** in **Privacy & Security** does not help, remove the quarantine flag:
+
+```bash
+xattr -dr com.apple.quarantine ~/"Library/Screen Savers/Fruit.saver"
+```
+
+Still stuck? [Open an issue](https://github.com/Corkscrews/fruit/issues) with your macOS version and Mac model.
+
+## Special thanks
+
+Thanks to [Márton Braun](https://github.com/zsmb13) for the article that helped fix the macOS Sonoma issues: https://zsmb.co/building-a-macos-screen-saver-in-kotlin. Thanks also to [pedrommcarrasco](https://github.com/pedrommcarrasco) for [Brooklyn](https://github.com/pedrommcarrasco/Brooklyn), which guided the development of this screensaver.
 
 ## License
 
-Fruit is available under the MIT license. See the [LICENSE](https://github.com/Corkscrews/fruit/blob/master/LICENSE) file for more information. Logo & original animations are Apple's property.
+Fruit is available under the MIT license. See the [LICENSE](LICENSE) file for more information. The POGO shader includes code ported from [SahilK-027/0x7444ff](https://github.com/SahilK-027/0x7444ff) (MIT). Logo & original animations are Apple's property.
