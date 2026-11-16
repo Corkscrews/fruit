@@ -21,4 +21,5 @@ public enum FruitType: String, CaseIterable {
   case pogo
   case glue
   case bands
+  case candy
 }
