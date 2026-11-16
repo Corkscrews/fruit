@@ -122,14 +122,9 @@ fragment float4 fragment_shader_puppy(
     VertexOut in [[stage_in]],
     constant PuppyUniforms &uniforms [[buffer(0)]],
     texture2d<float> height_map [[texture(0)]]) {
-    // 4x rotated-grid supersampling: the HDR reflections flip on within a pixel
-    // and alias badly; each sample is clamped before averaging so they resolve smoothly.
-    float3 color = puppy_shade(in.position.xy + float2(-0.125, -0.375), uniforms, height_map)
-                 + puppy_shade(in.position.xy + float2( 0.375, -0.125), uniforms, height_map)
-                 + puppy_shade(in.position.xy + float2( 0.125,  0.375), uniforms, height_map)
-                 + puppy_shade(in.position.xy + float2(-0.375,  0.125), uniforms, height_map);
-    color *= 0.25;
-    // Faint grain, applied after the AA average so it stays one pixel fine. Scaling the colour
+    // One sample per pixel: supersampling was dropped for speed.
+    float3 color = puppy_shade(in.position.xy, uniforms, height_map);
+    // Faint grain, one value per pixel. Scaling the colour
     // (not adding to it) only varies brightness, so the grain stays monochrome on any hue.
     color *= 1.0 + 0.06 * puppy_grain(in.position.xy);
     return float4(clamp(color, 0.0, 1.0), 1.0);
