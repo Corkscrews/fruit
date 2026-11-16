@@ -1,7 +1,7 @@
 # Copy of the cask published in https://github.com/Corkscrews/homebrew-tap (Casks/fruit-screensaver.rb).
 cask "fruit-screensaver" do
-  version "1.3.4"
-  sha256 "3dc2fcf7ab26c00e70404e3ea8805c226f5db7eaf787b9e0b1a26566da38e61b"
+  version "1.3.5"
+  sha256 "683567e3dfe3adb8f18535b28a64df8cc6d75e575866262e5e84fa39f2f6d4b6"
 
   url "https://github.com/Corkscrews/fruit/releases/download/#{version}/Fruit.saver.tar.gz"
   name "Fruit Screensaver"
