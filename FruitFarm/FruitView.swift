@@ -212,7 +212,8 @@ public final class FruitView: NSView {
       .glass: { GlassLayer(frame: frame, fruit: fruit, leaf: leaf, contentsScale: $0) },
       .metallic: { MetallicLayer(frame: frame, fruit: fruit, leaf: leaf, contentsScale: $0) },
       .pogo: { POGOLayer(frame: frame, fruit: fruit, leaf: leaf, contentsScale: $0) },
-      .glue: { GlueLayer(frame: frame, fruit: fruit, leaf: leaf, contentsScale: $0) }
+      .glue: { GlueLayer(frame: frame, fruit: fruit, leaf: leaf, contentsScale: $0) },
+      .bands: { BandsLayer(frame: frame, fruit: fruit, leaf: leaf, contentsScale: $0) }
     ]
     guard let makeLayer = makers[fruitType] else {
       assertionFailure("No background layer for \(fruitType)")

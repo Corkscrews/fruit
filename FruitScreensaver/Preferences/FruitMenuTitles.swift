@@ -16,7 +16,8 @@ enum FruitMenuTitles {
     .glass: "Glass",
     .metallic: "Metallic",
     .pogo: "POGO",
-    .glue: "Glue"
+    .glue: "Glue",
+    .bands: "Bands"
   ]
 
   /// A "Random" option followed by every background type, in `FruitType` order.
