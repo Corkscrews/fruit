@@ -68,20 +68,21 @@ Pick a background in **System Settings → Screen Saver → Options…**, or cho
 
 | | Background | Description |
 |:-:|---|---|
-| <img src="art/types/rainbow.png" width="120"/> | **Rainbow Bars** | The classic six-color stripes, scrolling slowly up through the logo. This is the original animation, the one that gave me the idea for this project, and I am infinitely grateful for it. |
-| <img src="art/types/solid.png" width="120"/> | **Solid** | One flat color that fades through the rainbow palette. |
-| <img src="art/types/linearGradient.png" width="120"/> | **Linear Gradient** | A top-to-bottom gradient of the rainbow colors that shifts over time. |
-| <img src="art/types/circularGradient.png" width="120"/> | **Circular Gradient** | A radial gradient of the rainbow colors that shifts over time. |
-| <img src="art/types/psychedelic.png" width="120"/> | **Psychedelic** | Fast, heavily warped plasma with hard color bands. |
+| <img src="art/types/rainbow.png" width="200"/> | **Rainbow Bars** | The classic six-color stripes, scrolling slowly up through the logo. This is the original animation, the one that gave me the idea for this project, and I am infinitely grateful for it. |
+| <img src="art/types/solid.png" width="200"/> | **Solid** | One flat color that fades through the rainbow palette. |
+| <img src="art/types/linearGradient.png" width="200"/> | **Linear Gradient** | A top-to-bottom gradient of the rainbow colors that shifts over time. |
+| <img src="art/types/circularGradient.png" width="200"/> | **Circular Gradient** | A radial gradient of the rainbow colors that shifts over time. |
+| <img src="art/types/psychedelic.png" width="200"/> | **Psychedelic** | A bevelled fruit filled with warped plasma that swirls like a stirred drink, speeding up in short bursts. |
 | <img src="art/types/california-spring.png" width="58"/> <img src="art/types/california-summer.png" width="58"/><br><img src="art/types/california-fall.png" width="58"/> <img src="art/types/california-winter.png" width="58"/> | **California** | A leaf with pulsing veins, dew drops and a wandering ladybird. Day/night and the season follow your clock; shown at midday in spring, summer, fall and winter. |
-| <img src="art/types/liquid.png" width="120"/> | **Liquid** | Smooth, layered domain-warped flow with soft color bands. |
-| <img src="art/types/puppy.png" width="120"/> | **Puppy** | A beveled 3D logo lit by a lamp that orbits it and slowly changes hue. |
-| <img src="art/types/warp.png" width="120"/> | **Warp Speed** | A relativistic star field that starts at rest; as the ship speeds up, stars stretch into streaks, shift color and crowd the center. |
-| <img src="art/types/ocean.png" width="120"/> | **Irish Ocean** | A dark North Atlantic sea with rolling waves, foam and spray. |
-| <img src="art/types/glass.png" width="120"/> | **Glass** | A thick glass slab over polarized-light rainbow fringes. |
-| <img src="art/types/metallic.png" width="120"/> | **Metallic** | A liquid-metal surface reflecting a studio environment. |
-| <img src="art/types/pogo.png" width="120"/> | **POGO** | Organic, Turing-like patterns that crawl and reshape. |
-| <img src="art/types/glue.png" width="120"/> | **Glue** | Glossy blobs that drift and merge like drops of glue. |
+| <img src="art/types/liquid.png" width="200"/> | **Liquid** | Smooth, layered domain-warped flow with soft color bands. |
+| <img src="art/types/puppy.png" width="200"/> | **Puppy** | A glossy, softly glowing 3D logo lit by a lamp that orbits it and slowly changes hue. |
+| <img src="art/types/warp.png" width="200"/> | **Warp Speed** | A relativistic star field that starts at rest; as the ship speeds up, stars stretch into streaks, shift color and crowd the center. |
+| <img src="art/types/ocean.png" width="200"/> | **Irish Ocean** | A dark North Atlantic sea with rolling waves, foam and spray. |
+| <img src="art/types/glass.png" width="200"/> | **Glass** | A thick glass slab over polarized-light rainbow fringes. |
+| <img src="art/types/metallic.png" width="200"/> | **Metallic** | A liquid-metal surface reflecting a studio environment. |
+| <img src="art/types/pogo.png" width="200"/> | **POGO** | Organic, Turing-like patterns that crawl and reshape. |
+| <img src="art/types/glue.png" width="200"/> | **Glue** | Glossy blobs that drift and merge like drops of glue. |
+| <img src="art/types/bands.png" width="200"/> | **Bands** | Rainbow rings grow from the middle of the fruit and the leaf, bending into their outlines as they expand. |
 
 *New designs are welcome through PRs!*
 
