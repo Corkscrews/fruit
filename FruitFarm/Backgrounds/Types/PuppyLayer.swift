@@ -30,14 +30,15 @@ struct PuppyUniforms {
 
 // Height of the logo slab. R = distance inward from the outline as a 0..1 ramp
 // across the bevel, G = wide blur of the silhouette (slight crown on the face).
-float puppy_height(texture2d<float> tex, float2 uv) {
+// Returns (full height, crown only); the crown is the soft shape the subsurface light sees.
+float2 puppy_height(texture2d<float> tex, float2 uv) {
     constexpr sampler s(filter::linear, address::clamp_to_edge);
     float3 b = tex.sample(s, uv).rgb;
     float k = 1.0 - clamp(b.r, 0.0, 1.0);
     // Body (B = 0): cubic, so curvature fades to zero where the bevel meets the face (no ring line).
     // Leaf (B = 1): the original quarter circle.
     float bevel = sqrt(1.0 - k * k * mix(k, 1.0, b.b));
-    return 0.55 * bevel + 0.45 * b.g;
+    return float2(0.55 * bevel + 0.45 * b.g, 0.45 * b.g);
 }
 
 // Distant round lamp: a soft disc with a wide glow around it.
@@ -49,14 +50,20 @@ float puppy_lamp(float2 q, float2 center, float radius) {
 float3 puppy_shade(float2 pos, constant PuppyUniforms &uniforms, texture2d<float> height_map) {
     float2 uv = (pos - uniforms.body_origin_px) / uniforms.body_size_px;
     float2 tx = 1.5 / uniforms.body_size_px;
-    float hx = puppy_height(height_map, uv + float2(tx.x, 0.0))
-             - puppy_height(height_map, uv - float2(tx.x, 0.0));
-    float hy = puppy_height(height_map, uv + float2(0.0, tx.y))
-             - puppy_height(height_map, uv - float2(0.0, tx.y));
+    float2 h_right = puppy_height(height_map, uv + float2(tx.x, 0.0));
+    float2 h_left = puppy_height(height_map, uv - float2(tx.x, 0.0));
+    float2 h_up = puppy_height(height_map, uv + float2(0.0, tx.y));
+    float2 h_down = puppy_height(height_map, uv - float2(0.0, tx.y));
+    float2 hx = h_right - h_left;
+    float2 hy = h_up - h_down;
 
     // Relief depth as a fraction of the logo width; y flips to point up.
     float relief = 0.32 * uniforms.body_size_px.x / 3.0;
-    float3 n = normalize(float3(-hx * relief, hy * relief, 1.0));
+    float3 n = normalize(float3(-hx.x * relief, hy.x * relief, 1.0));
+    // Normal of the crown alone: light scattered inside the body ignores the sharp bevel.
+    float3 n_soft = normalize(float3(-hx.y * relief, hy.y * relief, 1.0));
+    // Thin near the outline and on the leaf, thick in the middle of the body.
+    float thickness = 0.25 * (h_right.x + h_left.x + h_up.x + h_down.x);
 
     float t = uniforms.time;
     float3 V = float3(0.0, 0.0, 1.0);
@@ -70,10 +77,17 @@ float3 puppy_shade(float2 pos, constant PuppyUniforms &uniforms, texture2d<float
 
     // Lacquer painted the light's colour, so the hue reads strongly on both lit and shadow sides
     float diff = max(dot(n, L), 0.0);
-    float3 color = light_color * light_color * (0.12 + 0.88 * diff);
+    float3 color = light_color * light_color * (0.20 + 0.80 * diff);
     // Global light wraps the whole object, a bit stronger on the side away from the key
     float3 fill_dir = normalize(float3(-L.xy, 0.6));
     color += light_color * (0.08 + 0.14 * max(dot(n, fill_dir), 0.0));
+
+    // Pseudo subsurface scattering: wrapped diffuse on the soft normal bleeds light past the
+    // terminator, tinted deeper (absorbed along the path) and stronger where the material is thin.
+    float scatter = max(dot(n_soft, L) + 0.8, 0.0) / 1.8;
+    color += light_color * light_color * light_color * scatter * (0.18 + 0.55 * (1.0 - thickness));
+    // Faint self-glow so the shadow side never goes fully dark.
+    color += 0.12 * light_color;
 
     // Clear coat: mirror a studio (sky over a dark room) off the surface
     float3 R = reflect(-V, n);
