@@ -8,7 +8,7 @@ on:
 permissions:
   contents: write
 
-# Homebrew's BrewTestBot bumps the official fruit-screensaver cask on its own once a new release appears.
+# After a release, bump version and sha256 in Corkscrews/homebrew-tap (Casks/fruit-screensaver.rb).
 
 jobs:
   build-and-release:

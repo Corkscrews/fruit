@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.3.5]
+
+### Features
+
+ - Added pseudo subsurface scattering, self-glow and stronger ambient light to the PuppyLayer logo, so the lacquer reads as a lit solid body.
+ - Added Bands background: rings grow from the middle of the apple and the leaf, bend into their outlines as they expand, and loop forever. The colours follow the Rainbow order, blending smoothly from one to the next, with a soft wobble along each ring.
+ - Psychedelic layer now renders the apple as a bevelled object lit from a height map, with a studio reflection on the front and no white rim or dark border.
+ - Psychedelic liquid swirls around the middle of the apple. The flow follows the apple's outline, circular only at the centre, and turns slowly like a drink stirred in a cup, with faster turns during the fast phases.
+
+### Performance
+
+ - Reduced PuppyLayer render cost by dropping 4x supersampling to one sample per pixel. GPU time per frame falls from about 0.22 ms to about 0.08 ms with no visible change in the shading.
+
 ## [1.3.4]
 
 ### Features

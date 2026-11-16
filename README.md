@@ -1,6 +1,16 @@
 # Fruit
 
-<a href="https://formulae.brew.sh/cask/fruit-screensaver"><img src="https://img.shields.io/homebrew/cask/v/fruit-screensaver?logo=homebrew&label=brew%20install%20--cask%20fruit-screensaver" alt="Homebrew cask"></a>
+> [!IMPORTANT]
+> Fruit has been removed from the main Homebrew repository. Homebrew now requires every cask to be signed with an Apple Developer ID and notarized by Apple, which means paying Apple for a developer account. The developer of this project won't comply with that rule, so Fruit is now distributed through its own tap:
+>
+> ```bash
+> brew tap corkscrews/tap
+> brew trust corkscrews/tap
+> brew install --cask corkscrews/tap/fruit-screensaver
+> ```
+>
+> If you installed it from the main repository before, uninstall that copy first with `brew uninstall --cask fruit-screensaver`.
+
 <a href="https://github.com/Corkscrews/fruit/actions/workflows/tests.yml"><img src="https://github.com/Corkscrews/fruit/actions/workflows/tests.yml/badge.svg" alt="Tests"></a>
 <a href="https://github.com/Corkscrews/fruit/releases/latest"><img src="https://img.shields.io/github/v/release/Corkscrews/fruit" alt="Latest release"></a>
 
@@ -16,10 +26,12 @@ Compatible with macOS 11.5 and later.
 
 ### Homebrew (recommended)
 
-Fruit is available as a [Homebrew cask](https://formulae.brew.sh/cask/fruit-screensaver):
+Fruit is available from the [Corkscrews tap](https://github.com/Corkscrews/homebrew-tap):
 
 ```bash
-brew install --cask fruit-screensaver
+brew tap corkscrews/tap
+brew trust corkscrews/tap  # Homebrew only loads casks from taps you trust
+brew install --cask corkscrews/tap/fruit-screensaver
 ```
 
 Then open **System Settings → Screen Saver** and select **Fruit**.
