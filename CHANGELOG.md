@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.3.5]
+
+### Features
+
+ - Added pseudo subsurface scattering, self-glow and stronger ambient light to the PuppyLayer logo, so the lacquer reads as a lit solid body.
+
+### Performance
+
+ - Reduced PuppyLayer render cost by dropping 4x supersampling to one sample per pixel. GPU time per frame falls from about 0.22 ms to about 0.08 ms with no visible change in the shading.
+
 ## [1.3.4]
 
 ### Features
